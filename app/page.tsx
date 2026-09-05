@@ -29,6 +29,7 @@ function getPlan(user?: AuthUser | null): Plan { return user?.plan === "pro" ? "
 function getPlanLimits(plan: Plan) { return PLAN_LIMITS[plan]; }
 function canCreatePerson(plan: Plan, peopleCount: number) { return peopleCount < getPlanLimits(plan).people; }
 function escapeHtml(value: unknown) { return String(value ?? "").replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" })[character] ?? character); }
+function csvCell(value: unknown) { return `"${String(value ?? "").replace(/"/g, '""')}"`; }
 function mediaUsage(media: MediaItem[]) { return media.reduce((total, item) => total + item.size, 0); }
 function mediaAllowanceError(plan: Plan, media: MediaItem[], personId: number, type: UploadType, incomingBytes = 0) {
   const limits = getPlanLimits(plan); const singular = type === "voice" ? "voice recording" : type; const plural = type === "voice" ? "voice recordings" : `${type}s`;
@@ -322,8 +323,9 @@ function SettingsLinks({ go, admin }: { go: (screen: Screen) => void; admin?: bo
   return <div className="page settings-extra-page"><section><SectionTitle>Security</SectionTitle><div className="settings-group"><button onClick={() => go("changePassword")}><span>⌘</span><div><strong>Change password</strong><small>Confirm your current password and choose a stronger one</small></div><b>›</b></button>{<button onClick={() => go("admin")}><span>⚙</span><div><strong>Admin console</strong><small>{admin ? "Admin access verified" : "Restricted to authorized administrators"}</small></div><b>›</b></button>}</div></section><section><SectionTitle>Privacy & legal</SectionTitle><div className="settings-group"><button onClick={() => go("privacy")}><span>♢</span><div><strong>Privacy policy</strong><small>How Keepsake protects and processes account data</small></div><b>›</b></button><button onClick={() => go("terms")}><span>§</span><div><strong>Terms of use</strong><small>The rules for using Keepsake</small></div><b>›</b></button><button onClick={() => go("dataDeletion")}><span>⌫</span><div><strong>Account & data deletion</strong><small>What is removed and how deletion works</small></div><b>›</b></button></div></section></div>;
 }
 
-function ExportBackup({ exportBackup, printStories }: { exportBackup: () => void; printStories: () => void }) {
-  return <div className="page export-backup"><section className="export-card"><SectionTitle>Export & backup</SectionTitle><p>Download an independent copy of your people, notes, dates, and media details. Uploaded files remain safely stored in Firebase Storage.</p><div className="export-actions"><button className="primary-btn" onClick={exportBackup}>Download backup</button><button className="secondary-btn" onClick={printStories}>Print stories / Save PDF</button></div></section></div>;
+function ExportBackup({ exportBackup, printStories }: { exportBackup: (format: "json" | "csv" | "both") => void; printStories: () => void }) {
+  const [format, setFormat] = useState<"json" | "csv" | "both">("json");
+  return <div className="page export-backup"><section className="export-card"><SectionTitle>Export & backup</SectionTitle><p>Download an independent copy of your people, notes, dates, and media details. Uploaded files remain safely stored in Firebase Storage.</p><div className="export-format"><label><span>Download format</span><select value={format} onChange={(event) => setFormat(event.target.value as "json" | "csv" | "both")}><option value="json">JSON — complete app backup</option><option value="csv">CSV — spreadsheet-friendly</option><option value="both">Both JSON and CSV</option></select></label><small>{format === "json" ? "Best for restoring or transferring Keepsake data." : format === "csv" ? "Best for reviewing profiles in Excel or Google Sheets." : "Downloads a complete backup and a spreadsheet copy."}</small></div><div className="export-actions"><button className="primary-btn" onClick={() => exportBackup(format)}>Download {format === "both" ? "both files" : format.toUpperCase()}</button><button className="secondary-btn" onClick={printStories}>Print stories / Save PDF</button></div></section></div>;
 }
 
 function ChangePasswordPage({ user, go }: { user: AuthUser; go: (screen: Screen) => void }) {
@@ -387,7 +389,27 @@ export default function KeepsakeApp() {
   const deferredDelete = useRef<(() => void) | null>(null);
   const plan = getPlan(user); const canAddPerson = canCreatePerson(plan, people.length);
   const offerUndo = (message: string, restore: () => void, finalize?: () => void) => { if (undoTimer.current) window.clearTimeout(undoTimer.current); deferredDelete.current?.(); deferredDelete.current = finalize ?? null; setUndoNotice({ message, restore: () => { if (undoTimer.current) window.clearTimeout(undoTimer.current); deferredDelete.current = null; restore(); setUndoNotice(null); } }); undoTimer.current = window.setTimeout(() => { deferredDelete.current?.(); deferredDelete.current = null; setUndoNotice(null); }, 8000); };
-  const exportBackup = () => { if (!user) return; const backup = { format: "Keepsake backup", version: 1, exportedAt: new Date().toISOString(), account: { name: user.name, email: user.email }, people, notes, inbox, reminders, media: media.map(({ url: _url, ...item }) => item) }; const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" })); link.download = `keepsake-backup-${new Date().toISOString().slice(0, 10)}.json`; link.click(); window.setTimeout(() => URL.revokeObjectURL(link.href), 1000); };
+  const exportBackup = (format: "json" | "csv" | "both") => {
+    if (!user) return;
+    const date = new Date().toISOString().slice(0, 10);
+    const backup = { format: "Keepsake backup", version: 1, exportedAt: new Date().toISOString(), account: { name: user.name, email: user.email }, people, notes, inbox, reminders, media: media.map(({ url: _url, ...item }) => item) };
+    const download = (contents: string, mime: string, filename: string) => { const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([contents], { type: mime })); link.download = filename; document.body.appendChild(link); link.click(); link.remove(); window.setTimeout(() => URL.revokeObjectURL(link.href), 1000); };
+    if (format === "json" || format === "both") download(JSON.stringify(backup, null, 2), "application/json", `keepsake-backup-${date}.json`);
+    if (format === "csv" || format === "both") {
+      const headers = ["person_name", "relationship", "birthday", "anniversary", "favorite_color", "about", "record_type", "title", "value_or_body", "date", "media_type", "file_name"];
+      const rows: unknown[][] = [];
+      people.forEach((person) => {
+        const base = [person.name, person.relationship, person.birthday, person.anniversary, person.color, person.about];
+        rows.push([...base, "profile", person.name, person.about, "", "", ""]);
+        (person.favorites ?? []).forEach((item) => rows.push([...base, "favorite", item.label, item.value, "", "", ""]));
+        (person.milestones ?? []).forEach((item) => rows.push([...base, "milestone", item.title, item.details, item.date, "", ""]));
+        notes.filter((note) => note.personId === person.id).forEach((note) => rows.push([...base, "note", note.title, note.body, note.createdAt, "", ""]));
+        media.filter((item) => item.personId === person.id).forEach((item) => rows.push([...base, "media", item.caption, "", item.takenAt ?? item.createdAt, item.type, item.name]));
+      });
+      const csv = "\uFEFF" + [headers, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n");
+      window.setTimeout(() => download(csv, "text/csv;charset=utf-8", `keepsake-profiles-${date}.csv`), format === "both" ? 250 : 0);
+    }
+  };
   const printStories = () => { const popup = window.open("", "_blank"); if (!popup) return window.alert("Allow pop-ups to print or save your stories as a PDF."); const stories = people.map((person) => `<section><h2>${escapeHtml(person.name)}</h2><p><strong>${escapeHtml(person.relationship)}</strong></p><p>${escapeHtml(person.about)}</p>${(person.milestones ?? []).map((item) => `<h3>${escapeHtml(item.title)} · ${escapeHtml(item.date)}</h3><p>${escapeHtml(item.details)}</p>`).join("")}${notes.filter((note) => note.personId === person.id).map((note) => `<h3>${escapeHtml(note.title)}</h3><p>${escapeHtml(note.body)}</p>`).join("")}</section>`).join(""); popup.document.write(`<!doctype html><title>Keepsake stories</title><style>body{font-family:Georgia,serif;max-width:760px;margin:40px auto;line-height:1.55;color:#241c17}section{break-after:page;border-bottom:1px solid #ddd;padding-bottom:28px}h1,h2{color:#57372c}</style><h1>Keepsake stories</h1>${stories || "<p>No stories have been added yet.</p>"}`); popup.document.close(); popup.focus(); window.setTimeout(() => popup.print(), 250); };
   useEffect(() => {
     initializeAnalytics().catch(() => undefined);
