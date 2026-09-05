@@ -1,5 +1,5 @@
 import { collection, deleteDoc, doc, getDoc, getDocs, serverTimestamp, setDoc } from "firebase/firestore";
-import { deleteObject, getDownloadURL, ref, uploadBytes } from "firebase/storage";
+import { deleteObject, getDownloadURL, ref, uploadBytesResumable } from "firebase/storage";
 import { db, storage } from "./firebase";
 
 export type CloudState = {
@@ -18,6 +18,7 @@ export type CloudMediaRecord = {
   size: number;
   duration?: number;
   caption?: string;
+  takenAt?: string;
   createdAt?: string;
   url: string;
 };
@@ -57,12 +58,15 @@ function pathFor(uid: string, item: Omit<CloudMediaRecord, "url">) {
   return `users/${uid}/people/${item.personId}/${folderFor(item.type)}/${item.id}`;
 }
 
-export async function uploadCloudMedia(uid: string, item: Omit<CloudMediaRecord, "url">, file: Blob) {
+export async function uploadCloudMedia(uid: string, item: Omit<CloudMediaRecord, "url">, file: Blob, onProgress?: (percent: number) => void) {
   const storagePath = pathFor(uid, item);
   const mediaRef = doc(db, "users", uid, "media", item.id);
   const previous = await getDoc(mediaRef);
   const previousPath = previous.exists() ? previous.data().storagePath as string | undefined : undefined;
-  await uploadBytes(ref(storage, storagePath), file, { contentType: file.type || undefined });
+  const task = uploadBytesResumable(ref(storage, storagePath), file, { contentType: file.type || undefined });
+  await new Promise<void>((resolve, reject) => task.on("state_changed", (snapshot) => {
+    onProgress?.(snapshot.totalBytes ? Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100) : 0);
+  }, reject, resolve));
   await setDoc(mediaRef, { ...clean(item), storagePath, updatedAt: serverTimestamp() });
   if (previousPath && previousPath !== storagePath) await deleteObject(ref(storage, previousPath)).catch(() => undefined);
   return getDownloadURL(ref(storage, storagePath));
@@ -84,6 +88,10 @@ export async function deleteCloudMedia(uid: string, id: string) {
     if (storagePath) await deleteObject(ref(storage, storagePath)).catch(() => undefined);
   }
   await deleteDoc(mediaRef);
+}
+
+export async function updateCloudMediaMetadata(uid: string, id: string, updates: { name?: string; caption?: string; takenAt?: string }) {
+  await setDoc(doc(db, "users", uid, "media", id), { ...clean(updates), updatedAt: serverTimestamp() }, { merge: true });
 }
 
 export async function deleteCloudAccountData(uid: string) {

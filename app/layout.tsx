@@ -8,7 +8,11 @@ const serif = Lora({ variable: "--font-serif", subsets: ["latin"] });
 export const metadata: Metadata = {
   title: "Keepsake — Remember the people who matter",
   description: "A private place for the stories, details, and memories that make your people special.",
-  icons: { icon: "/favicon.svg", shortcut: "/favicon.svg" },
+  icons: {
+    icon: [{ url: "/keepsake-favicon.png", type: "image/png" }],
+    shortcut: "/keepsake-favicon.png",
+    apple: "/keepsake-favicon.png",
+  },
 };
 
 export const viewport: Viewport = {
