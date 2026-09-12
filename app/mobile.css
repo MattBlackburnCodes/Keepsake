@@ -43,10 +43,20 @@
   textarea { line-height: 1.45; }
 
   .bottom-nav {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    align-items: center;
+    justify-content: initial;
     height: calc(76px + env(safe-area-inset-bottom));
     padding: 5px max(8px, env(safe-area-inset-right)) env(safe-area-inset-bottom) max(8px, env(safe-area-inset-left));
   }
-  .bottom-nav button { width: 64px; min-height: 58px; touch-action: manipulation; }
+  .bottom-nav button { width: 100%; min-width: 0; min-height: 58px; touch-action: manipulation; }
+  .bottom-nav button:nth-child(1) { grid-column: 1; }
+  .bottom-nav button:nth-child(2) { grid-column: 2; }
+  .bottom-nav button:nth-child(3) { grid-column: 3; }
+  .bottom-nav button:nth-child(4) { grid-column: 4; }
+  .bottom-nav button:nth-child(5) { grid-column: 6; }
+  .bottom-nav button:nth-child(6) { grid-column: 7; }
   .bottom-nav small { font-size: 10px; }
   .bottom-nav .nav-add span { width: 50px; height: 50px; }
   .global-capture { bottom: calc(88px + env(safe-area-inset-bottom)); min-width: 48px; min-height: 48px; }
