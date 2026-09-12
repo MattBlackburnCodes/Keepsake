@@ -403,22 +403,28 @@ export default function KeepsakeApp() {
   const exportBackup = (format: "json" | "csv" | "both") => {
     if (!user) return;
     const date = new Date().toISOString().slice(0, 10);
-    const backup = { format: "Keepsake backup", version: 1, exportedAt: new Date().toISOString(), account: { name: user.name, email: user.email }, people, notes, inbox, reminders, media };
+    const exportedPeople = people.map(({ image: _image, cover: _cover, ...person }) => ({
+      ...person,
+      profileMediaId: media.find((item) => item.personId === person.id && item.type === "profile")?.id ?? "",
+      coverMediaId: media.find((item) => item.personId === person.id && item.type === "cover")?.id ?? "",
+    }));
+    const exportedMedia = media.map(({ url: _url, ...item }) => item);
+    const backup = { format: "Keepsake backup", version: 2, exportedAt: new Date().toISOString(), security: "Live media download URLs are intentionally excluded.", account: { name: user.name, email: user.email }, people: exportedPeople, notes, inbox, reminders, media: exportedMedia };
     const download = (contents: string, mime: string, filename: string) => { const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([contents], { type: mime })); link.download = filename; document.body.appendChild(link); link.click(); link.remove(); window.setTimeout(() => URL.revokeObjectURL(link.href), 1000); };
     if (format === "json" || format === "both") download(JSON.stringify(backup, null, 2), "application/json", `keepsake-backup-${date}.json`);
     if (format === "csv" || format === "both") {
-      const headers = ["person_name", "relationship", "birthday", "anniversary", "favorite_color", "about", "record_type", "title", "value_or_body", "date", "media_type", "file_name", "profile_image_url", "cover_image_url", "media_url"];
+      const headers = ["person_name", "relationship", "birthday", "anniversary", "favorite_color", "about", "record_type", "title", "value_or_body", "date", "media_type", "file_name", "profile_media_id", "cover_media_id", "media_id"];
       const rows: unknown[][] = [];
       people.forEach((person) => {
         const base = [person.name, person.relationship, person.birthday, person.anniversary, person.color, person.about];
-        const profileImageUrl = person.image || media.find((item) => item.personId === person.id && item.type === "profile")?.url || "";
-        const coverImageUrl = person.cover || media.find((item) => item.personId === person.id && item.type === "cover")?.url || "";
-        const links = [profileImageUrl, coverImageUrl];
-        rows.push([...base, "profile", person.name, person.about, "", "", "", ...links, ""]);
-        (person.favorites ?? []).forEach((item) => rows.push([...base, "favorite", item.label, item.value, "", "", "", ...links, ""]));
-        (person.milestones ?? []).forEach((item) => rows.push([...base, "milestone", item.title, item.details, item.date, "", "", ...links, ""]));
-        notes.filter((note) => note.personId === person.id).forEach((note) => rows.push([...base, "note", note.title, note.body, note.createdAt, "", "", ...links, ""]));
-        media.filter((item) => item.personId === person.id).forEach((item) => rows.push([...base, "media", item.caption, "", item.takenAt ?? item.createdAt, item.type, item.name, ...links, item.url]));
+        const profileMediaId = media.find((item) => item.personId === person.id && item.type === "profile")?.id ?? "";
+        const coverMediaId = media.find((item) => item.personId === person.id && item.type === "cover")?.id ?? "";
+        const mediaReferences = [profileMediaId, coverMediaId];
+        rows.push([...base, "profile", person.name, person.about, "", "", "", ...mediaReferences, ""]);
+        (person.favorites ?? []).forEach((item) => rows.push([...base, "favorite", item.label, item.value, "", "", "", ...mediaReferences, ""]));
+        (person.milestones ?? []).forEach((item) => rows.push([...base, "milestone", item.title, item.details, item.date, "", "", ...mediaReferences, ""]));
+        notes.filter((note) => note.personId === person.id).forEach((note) => rows.push([...base, "note", note.title, note.body, note.createdAt, "", "", ...mediaReferences, ""]));
+        media.filter((item) => item.personId === person.id).forEach((item) => rows.push([...base, "media", item.caption, "", item.takenAt ?? item.createdAt, item.type, item.name, ...mediaReferences, item.id]));
       });
       const csv = "\uFEFF" + [headers, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n");
       window.setTimeout(() => download(csv, "text/csv;charset=utf-8", `keepsake-profiles-${date}.csv`), format === "both" ? 250 : 0);
