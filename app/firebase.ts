@@ -1,5 +1,6 @@
 import { getApp, getApps, initializeApp } from "firebase/app";
 import { getAnalytics, isSupported } from "firebase/analytics";
+import { initializeAppCheck, ReCaptchaEnterpriseProvider } from "firebase/app-check";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
@@ -15,6 +16,24 @@ const firebaseConfig = {
 };
 
 export const firebaseApp = getApps().length ? getApp() : initializeApp(firebaseConfig);
+
+const appCheckSiteKey = process.env.NEXT_PUBLIC_FIREBASE_APP_CHECK_SITE_KEY || "6Lfp1KwtAAAAAF0dKNHkFanbhul2o1LdlrKKTpUQ";
+if (typeof window !== "undefined") {
+  const appCheckGlobal = globalThis as typeof globalThis & {
+    FIREBASE_APPCHECK_DEBUG_TOKEN?: boolean | string;
+    __keepsakeAppCheckInitialized?: boolean;
+  };
+  const debugToken = process.env.NEXT_PUBLIC_FIREBASE_APPCHECK_DEBUG_TOKEN;
+  if (debugToken) appCheckGlobal.FIREBASE_APPCHECK_DEBUG_TOKEN = debugToken === "true" ? true : debugToken;
+  if (!appCheckGlobal.__keepsakeAppCheckInitialized) {
+    initializeAppCheck(firebaseApp, {
+      provider: new ReCaptchaEnterpriseProvider(appCheckSiteKey),
+      isTokenAutoRefreshEnabled: true,
+    });
+    appCheckGlobal.__keepsakeAppCheckInitialized = true;
+  }
+}
+
 export const auth = getAuth(firebaseApp);
 export const db = getFirestore(firebaseApp);
 export const storage = getStorage(firebaseApp);

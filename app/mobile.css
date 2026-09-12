@@ -1,0 +1,119 @@
+/* Mobile-specific polish. Kept separate so responsive overrides remain auditable. */
+@media (max-width: 900px) {
+  html { min-height: 100%; background: var(--cream); -webkit-text-size-adjust: 100%; }
+  body { min-height: 100dvh; padding: 0; overscroll-behavior-y: none; }
+  .app-shell, main, .auth-shell, .verify-shell { min-height: 100dvh; }
+  .page {
+    width: 100%;
+    padding-top: max(24px, calc(env(safe-area-inset-top) + 18px));
+    padding-right: max(22px, env(safe-area-inset-right));
+    padding-bottom: max(112px, calc(env(safe-area-inset-bottom) + 96px));
+    padding-left: max(22px, env(safe-area-inset-left));
+  }
+
+  /* Comfortable touch targets. */
+  .back-btn, .close-btn, .icon-btn, .capture-close, .delete-note,
+  .inline-edit-details, .story-add, .text-button, .media-actions button,
+  .favorites-grid button, .milestone-list button, .profile-hero-actions button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .back-btn { display: inline-flex; align-items: center; gap: 6px; padding: 10px 13px; }
+  .settings-group button, .inbox-banner, .facts-grid .editable-fact { min-height: 58px; }
+  .primary-btn, .secondary-btn, .signout-btn, .voice-capture { min-height: 46px; }
+
+  /* Readable mobile typography. */
+  .page p, .legal-sections p, .admin-grid p, .about-person > p,
+  .story-notes p, .notes-list p, .inbox-card > p { font-size: 14px; }
+  .page small, .settings-group small, .memory-category-grid small,
+  .facts-grid small, .integration-grid small, .reminder-card > p,
+  .reminder-row small { font-size: 12px; line-height: 1.45; }
+  .settings-group strong, .facts-grid strong, .memory-category-grid strong,
+  .integration-grid strong { font-size: 14px; }
+  .eyebrow, .tag { font-size: 10px; }
+
+  /* Avoid iOS zooming the page when a field receives focus. */
+  input, textarea, select,
+  .form-page input, .form-page textarea,
+  .note-composer input, .note-composer textarea,
+  .quick-capture input, .quick-capture textarea {
+    min-height: 46px;
+    font-size: 16px !important;
+  }
+  textarea { line-height: 1.45; }
+
+  .bottom-nav {
+    height: calc(76px + env(safe-area-inset-bottom));
+    padding: 5px max(8px, env(safe-area-inset-right)) env(safe-area-inset-bottom) max(8px, env(safe-area-inset-left));
+  }
+  .bottom-nav button { width: 64px; min-height: 58px; touch-action: manipulation; }
+  .bottom-nav small { font-size: 10px; }
+  .bottom-nav .nav-add span { width: 50px; height: 50px; }
+  .global-capture { bottom: calc(88px + env(safe-area-inset-bottom)); min-width: 48px; min-height: 48px; }
+  .sync-status { top: max(8px, calc(env(safe-area-inset-top) + 5px)); }
+
+  /* Phone dialogs behave as sheets and stay usable above the keyboard. */
+  .capture-backdrop { place-items: end center; padding: 0; }
+  .quick-capture {
+    width: 100%;
+    max-height: calc(100dvh - env(safe-area-inset-top) - 12px);
+    overflow: auto;
+    overscroll-behavior: contain;
+    border-radius: 25px 25px 0 0;
+    padding: 27px 22px max(24px, calc(env(safe-area-inset-bottom) + 18px));
+  }
+  .media-lightbox {
+    padding: max(58px, calc(env(safe-area-inset-top) + 48px)) max(14px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
+  }
+  .media-lightbox > div { width: 100%; max-height: 82dvh; overflow: auto; text-align: center; }
+  .media-lightbox img, .media-lightbox video { max-height: 68dvh; border-radius: 12px; }
+  .media-lightbox > button { top: max(10px, env(safe-area-inset-top)); right: max(10px, env(safe-area-inset-right)); }
+
+  .form-actions { position: sticky; bottom: calc(78px + env(safe-area-inset-bottom)); z-index: 5; padding: 10px 0; background: linear-gradient(transparent, var(--cream) 24%); }
+  .notification-panel { position: fixed; top: max(58px, calc(env(safe-area-inset-top) + 48px)); right: 14px; left: 14px; width: auto; max-height: 70dvh; overflow: auto; }
+  .undo-toast { bottom: calc(88px + env(safe-area-inset-bottom)); }
+}
+
+@media (max-width: 620px) {
+  .page { padding-right: max(16px, env(safe-area-inset-right)); padding-left: max(16px, env(safe-area-inset-left)); }
+  .page-header { align-items: flex-start; gap: 12px; }
+  .page-header h1 { font-size: clamp(29px, 9vw, 36px); }
+  .profile-page { padding-right: 0; padding-left: 0; }
+  .profile-top-actions { padding: 0 max(16px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left)); }
+  .profile-hero { height: min(390px, 55dvh); min-height: 330px; }
+  .profile-identity { right: 18px; }
+  .profile-identity h1 { font-size: clamp(30px, 10vw, 38px); overflow-wrap: anywhere; }
+  .profile-hero-actions button { display: grid; place-items: center; padding: 8px; }
+  .memory-category-grid.media-only { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .memory-category-grid button { min-width: 0; padding: 12px 9px; }
+  .memory-category-grid strong, .memory-category-grid small { overflow-wrap: anywhere; }
+  .media-gallery { grid-template-columns: 1fr; }
+  .media-gallery img, .media-gallery video, .audio-memory { height: min(260px, 52vw); }
+  .media-actions { gap: 8px; }
+  .media-actions button { padding: 8px 12px; font-size: 12px; }
+  .account-card { flex-wrap: wrap; }
+  .account-card > div { min-width: 0; }
+  .account-card p { overflow-wrap: anywhere; }
+  .settings-footer { align-items: flex-start; flex-wrap: wrap; }
+  .export-actions, .capture-actions, .form-actions { flex-direction: column; align-items: stretch; }
+  .export-actions > *, .capture-actions > *, .form-actions > * { width: 100%; }
+  .form-actions { bottom: calc(76px + env(safe-area-inset-bottom)); }
+  .onboarding-card { padding: 18px !important; }
+}
+
+/* Short landscape phones need content height, not a tall hero or visual panel. */
+@media (max-height: 520px) and (orientation: landscape) {
+  .auth-visual { min-height: 220px; }
+  .profile-hero { height: 300px; min-height: 300px; }
+  .quick-capture { max-height: 94dvh; border-radius: 20px 20px 0 0; }
+  .bottom-nav { height: calc(62px + env(safe-area-inset-bottom)); }
+  .bottom-nav button { min-height: 50px; }
+  .bottom-nav .nav-add span { width: 43px; height: 43px; margin-top: -18px; }
+}
+
+@media (hover: none) and (pointer: coarse) {
+  button, select, input[type="file"] { touch-action: manipulation; }
+  .button-tooltip { display: none; }
+  .person-card:hover, .action-grid > button:hover, .people-strip button:hover,
+  .primary-btn:hover { transform: none; }
+}
