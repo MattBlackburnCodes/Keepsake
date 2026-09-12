@@ -74,8 +74,14 @@
     font: 800 9px/1 system-ui, sans-serif;
   }
   .bottom-nav .nav-add span { width: 50px; height: 50px; }
-  .global-capture { bottom: calc(88px + env(safe-area-inset-bottom)); min-width: 48px; min-height: 48px; }
-  .sync-status { top: max(8px, calc(env(safe-area-inset-top) + 5px)); }
+  .sync-status {
+    top: auto;
+    right: auto;
+    bottom: calc(88px + env(safe-area-inset-bottom));
+    left: 50%;
+    transform: translateX(-50%);
+    white-space: nowrap;
+  }
 
   /* Phone dialogs behave as sheets and stay usable above the keyboard. */
   .capture-backdrop { place-items: end center; padding: 0; }
