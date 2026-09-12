@@ -74,10 +74,11 @@ export async function uploadCloudMedia(uid: string, item: Omit<CloudMediaRecord,
 
 export async function loadCloudMedia(uid: string) {
   const snapshot = await getDocs(collection(db, "users", uid, "media"));
-  return Promise.all(snapshot.docs.map(async (mediaDoc) => {
+  const results = await Promise.allSettled(snapshot.docs.map(async (mediaDoc) => {
     const item = mediaDoc.data() as Omit<CloudMediaRecord, "url"> & { storagePath: string };
     return { ...item, id: mediaDoc.id, url: await getDownloadURL(ref(storage, item.storagePath)) } as CloudMediaRecord;
   }));
+  return results.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
 }
 
 export async function deleteCloudMedia(uid: string, id: string) {
