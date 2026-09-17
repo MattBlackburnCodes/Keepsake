@@ -125,6 +125,15 @@
   .account-card { flex-wrap: wrap; }
   .account-card > div { min-width: 0; }
   .account-card p { overflow-wrap: anywhere; }
+  .account-card .signout-btn {
+    width: auto;
+    height: auto;
+    min-width: 82px;
+    padding: 10px 14px;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+  .account-card .signout-btn::after { content: none; }
   .settings-footer { align-items: flex-start; flex-wrap: wrap; }
   .export-actions, .capture-actions, .form-actions { flex-direction: column; align-items: stretch; }
   .export-actions > *, .capture-actions > *, .form-actions > * { width: 100%; }
