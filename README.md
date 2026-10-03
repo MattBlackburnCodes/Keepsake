@@ -30,3 +30,7 @@ npm run build
 Import the GitHub repository into Vercel and keep the detected Next.js defaults. After the first deployment, add the Vercel production domain under Firebase Authentication's authorized domains.
 
 Firebase public web configuration is initialized in `app/firebase.ts`. Service-account JSON files are server credentials and must never be committed or uploaded to Vercel.
+
+## End-to-end encryption preview
+
+The client-side encryption implementation is feature-gated and remains off by default. Read [docs/E2EE-ROLLOUT.md](docs/E2EE-ROLLOUT.md) before enabling `NEXT_PUBLIC_E2EE_ENABLED=true` in any environment.
