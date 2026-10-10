@@ -56,6 +56,10 @@ async function loadLocalMedia(owner: string) {
   return new Promise<MediaItem[]>((resolve, reject) => { const request = db.transaction("files", "readonly").objectStore("files").getAll(); request.onsuccess = () => resolve(request.result.filter((entry) => entry.owner === owner).map((entry) => ({ id: entry.id, personId: entry.personId, type: entry.type, name: entry.name, size: entry.size, duration: entry.duration, caption: entry.caption, takenAt: entry.takenAt, createdAt: entry.createdAt, url: URL.createObjectURL(entry.blob) }))); request.onerror = () => reject(request.error); });
 }
 
+function mediaFailureDetail(error: unknown) {
+  return typeof error === "object" && error && "code" in error ? ` Firebase reported: ${String(error.code)}.` : "";
+}
+
 function withLoadTimeout<T>(operation: Promise<T>, milliseconds = 20000): Promise<T> {
   return new Promise((resolve, reject) => {
     const timer = window.setTimeout(() => reject(new Error("Keepsake loading timed out.")), milliseconds);
@@ -608,8 +612,9 @@ export default function KeepsakeApp() {
       setDataOwner(user.uid);
       setSyncStatus("saved");
       const failedIds = new Set<string>();
+      const errorCodes = new Set<string>();
       let cloudMedia: MediaItem[];
-      try { cloudMedia = await withLoadTimeout(loadMedia((id) => failedIds.add(id)), 60000); }
+      try { cloudMedia = await withLoadTimeout(loadMedia((id, error) => { failedIds.add(id); const code = typeof error === "object" && error && "code" in error ? String(error.code) : "download-or-decryption-failed"; errorCodes.add(code); }), 60000); }
       catch { if (!cancelled) setMediaLoadError("Your profiles and notes are ready, but media could not be loaded. Check your connection and retry."); return; }
       if (!cloudMedia.length && !failedIds.size) {
         const legacyMedia = await loadLocalMedia(user.email).catch(() => []);
@@ -626,9 +631,9 @@ export default function KeepsakeApp() {
       setMedia((current) => {
         const changed = current.filter((item) => baseline.get(item.id) !== item);
         const changedIds = new Set(changed.map((item) => item.id));
-        return [...cloudMedia.filter((item) => !changedIds.has(item.id)), ...current.filter((item) => failedIds.has(item.id) && !changedIds.has(item.id)), ...changed];
+        return [...cloudMedia.filter((item) => !changedIds.has(item.id)), ...current.filter((item) => failedIds.has(item.id) && !changedIds.has(item.id) && !cloudMedia.some((loaded) => loaded.id === item.id)), ...changed];
       });
-      setMediaLoadError(failedIds.size ? "Some photos or recordings could not be downloaded or decrypted. Your uploaded files have not been deleted. Check your connection and retry." : "");
+      setMediaLoadError(failedIds.size ? `Some media could not be downloaded from Firebase (${[...errorCodes].join(", ")}). Device copies are shown when available. Your uploaded files have not been deleted. Check your connection and retry.` : "");
     };
     load().catch(() => { if (!cancelled) setSyncStatus("error"); });
     return () => { cancelled = true; };
@@ -687,7 +692,7 @@ export default function KeepsakeApp() {
     const previewUrl = URL.createObjectURL(profilePhoto); const optimisticPerson = { ...person, image: previewUrl }; const mediaItem = { id: `profile-${person.id}`, personId: person.id, type: "profile" as const, name: profilePhoto.name, size: profilePhoto.size };
     setPeople((current) => current.some((item) => item.id === person.id) ? current.map((item) => item.id === person.id ? optimisticPerson : item) : [...current, optimisticPerson]); select(optimisticPerson);
     try { const cloudUrl = await storeMedia(user.email, mediaItem, profilePhoto); URL.revokeObjectURL(previewUrl); const stored = { ...mediaItem, url: cloudUrl }; const savedPerson = { ...person, image: cloudUrl }; setMedia((current) => [...current.filter((item) => !(item.personId === person.id && item.type === "profile")), stored]); setPeople((current) => current.map((item) => item.id === person.id ? savedPerson : item)); setSelected((current) => current?.id === person.id ? savedPerson : current); }
-    catch { URL.revokeObjectURL(previewUrl); setPeople((current) => current.map((item) => item.id === person.id ? person : item)); setSelected((current) => current?.id === person.id ? person : current); window.alert("The person was saved, but the profile picture did not upload. Check your connection and try the photo again."); }
+    catch (error) { URL.revokeObjectURL(previewUrl); setPeople((current) => current.map((item) => item.id === person.id ? person : item)); setSelected((current) => current?.id === person.id ? person : current); window.alert("The person was saved, but the profile picture did not upload. Check your connection and try the photo again." + mediaFailureDetail(error)); }
   };
   const updateProfilePhoto = async (file: File) => {
     if (!user || !selected) return "Open a person before choosing a profile picture."; if (!file.type.startsWith("image/")) return "Choose a supported image file."; if (file.size > MEDIA_FILE_LIMITS.photoBytes) return "Profile pictures must be 10 MB or smaller.";
@@ -695,7 +700,7 @@ export default function KeepsakeApp() {
     const previousImage = person.image; const previewUrl = URL.createObjectURL(file); const optimisticPerson = { ...person, image: previewUrl }; const mediaItem = { id: `profile-${person.id}`, personId: person.id, type: "profile" as const, name: file.name, size: file.size };
     setPeople((current) => current.map((item) => item.id === person.id ? optimisticPerson : item)); setSelected(optimisticPerson);
     try { const cloudUrl = await storeMedia(user.email, mediaItem, file); URL.revokeObjectURL(previewUrl); const stored = { ...mediaItem, url: cloudUrl }; const updatedPerson = { ...person, image: cloudUrl }; setMedia((current) => [...current.filter((item) => !(item.personId === person.id && item.type === "profile")), stored]); setPeople((current) => current.map((item) => item.id === person.id ? updatedPerson : item)); setSelected((current) => current?.id === person.id ? updatedPerson : current); return null; }
-    catch { URL.revokeObjectURL(previewUrl); const restored = { ...person, image: previousImage }; setPeople((current) => current.map((item) => item.id === person.id ? restored : item)); setSelected((current) => current?.id === person.id ? restored : current); return "The preview appeared, but the profile picture could not be uploaded. Check your connection and try again."; }
+    catch (error) { URL.revokeObjectURL(previewUrl); const restored = { ...person, image: previousImage }; setPeople((current) => current.map((item) => item.id === person.id ? restored : item)); setSelected((current) => current?.id === person.id ? restored : current); return "The preview appeared, but the profile picture could not be uploaded. Check your connection and try again." + mediaFailureDetail(error); }
   };
   const updateCoverPhoto = async (file: File, onProgress?: (percent: number) => void) => {
     if (!user || !selected) return "Open a person before choosing a cover photo."; if (!file.type.startsWith("image/") || file.size > MEDIA_FILE_LIMITS.photoBytes) return "Choose an image that is 10 MB or smaller.";
@@ -703,7 +708,7 @@ export default function KeepsakeApp() {
     const previousCover = person.cover; const previewUrl = URL.createObjectURL(file); const optimisticPerson = { ...person, cover: previewUrl };
     setPeople((current) => current.map((item) => item.id === person.id ? optimisticPerson : item)); setSelected(optimisticPerson);
     try { const uploadFile = await optimizeCoverImage(file); const mediaItem = { id: `cover-${person.id}`, personId: person.id, type: "cover" as const, name: uploadFile.name, size: uploadFile.size }; const cloudUrl = await storeMedia(user.email, mediaItem, uploadFile, onProgress); URL.revokeObjectURL(previewUrl); const stored = { ...mediaItem, url: cloudUrl }; const updatedPerson = { ...person, cover: cloudUrl }; setMedia((current) => [...current.filter((item) => !(item.personId === person.id && item.type === "cover")), stored]); setPeople((current) => current.map((item) => item.id === person.id ? updatedPerson : item)); setSelected((current) => current?.id === person.id ? updatedPerson : current); return null; }
-    catch { URL.revokeObjectURL(previewUrl); const restored = { ...person, cover: previousCover }; setPeople((current) => current.map((item) => item.id === person.id ? restored : item)); setSelected((current) => current?.id === person.id ? restored : current); return "The preview appeared, but the cover photo could not be uploaded. Check your connection and try again."; }
+    catch (error) { URL.revokeObjectURL(previewUrl); const restored = { ...person, cover: previousCover }; setPeople((current) => current.map((item) => item.id === person.id ? restored : item)); setSelected((current) => current?.id === person.id ? restored : current); return "The preview appeared, but the cover photo could not be uploaded. Check your connection and try again." + mediaFailureDetail(error); }
   };
   const updatePersonDetails = (updates: Partial<Person>) => { if (!selected) return; const updatedPerson = { ...selected, ...updates }; setPeople((current) => current.map((person) => person.id === selected.id ? updatedPerson : person)); setSelected(updatedPerson); };
   const updateMediaDetails = async (id: string, updates: { name?: string; caption?: string; takenAt?: string }) => { if (!user) return; setMedia((current) => current.map((entry) => entry.id === id ? { ...entry, ...updates } : entry)); await updateCloudMediaMetadata(user.uid, id, updates).catch(() => setSyncStatus("error")); };

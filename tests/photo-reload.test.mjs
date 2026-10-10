@@ -7,7 +7,7 @@ import ts from 'typescript';
 function mockedModule(file, mocks, globals = {}) {
   const exports = {};
   const code = ts.transpileModule(readFileSync(new URL(file, import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2022 } }).outputText;
-  vm.runInNewContext(code, { exports, require: name => mocks[name] ?? {}, URL, URLSearchParams, console, ...globals });
+  vm.runInNewContext(code, { exports, require: name => mocks[name] ?? (name === "./media-cache" ? { cachedMedia: async () => undefined, cachedMediaList: async () => [], cacheMedia: async () => {}, removeCachedMedia: async () => {} } : {}), URL, URLSearchParams, console, ...globals });
   return exports;
 }
 const tick = () => new Promise(resolve => setImmediate(resolve));
@@ -102,4 +102,45 @@ test('a new upload wins over an older background download of the same photo', as
   resolve([profile]); await tick(); h.render(); h.flush();
   assert.equal(h.media()[0].url, uploaded.url);
   assert.equal(h.people()[0].image, uploaded.url);
+});
+
+test('an encrypted device copy restores media after restarting the loader without a download', async () => {
+  const metadata = { v: 1, iv: 'iv', ciphertext: 'encrypted-metadata' };
+  const ciphertext = new Blob(['ciphertext'], { type: 'application/octet-stream' });
+  const saved = { uid: 'owner', id: profile.id, storagePath: 'profile.e2ee', metadata, blob: ciphertext };
+  let downloads = 0;
+  const mocks = {
+    './media-cache': { cachedMedia: async (uid, id) => uid === saved.uid && id === saved.id ? saved : undefined, cacheMedia: async () => {} },
+    './firebase': { db: {}, storage: {} },
+    'firebase/firestore': { collection: () => ({}), getDocs: async () => ({ docs: [{ id: profile.id, data: () => ({ cryptoVersion: 1, storagePath: saved.storagePath, metadata }) }] }) },
+    'firebase/storage': { ref: () => ({}), getBlob: async () => { downloads++; throw Error('offline'); } },
+    './e2ee': { getSessionKey: () => ({}), decryptPayload: async () => profile, decryptMediaBlob: async (_key, encrypted) => { assert.equal(encrypted, ciphertext); return new Blob(['photo'], { type: 'image/jpeg' }); } },
+  };
+  for (let restart = 0; restart < 2; restart++) {
+    const api = mockedModule('../app/firebase-data.ts', mocks);
+    const loaded = await api.loadCloudMedia('owner');
+    assert.equal(loaded.length, 1); assert.equal(loaded[0].id, profile.id); URL.revokeObjectURL(loaded[0].url);
+  }
+  assert.equal(downloads, 0);
+  const otherDevice = mockedModule('../app/firebase-data.ts', { ...mocks, './media-cache': { cachedMedia: async () => undefined } });
+  const errors = []; const loaded = await otherDevice.loadCloudMedia('owner', (id, error) => errors.push(error.message));
+  assert.equal(loaded.length, 0); assert.ok(errors.includes('offline'));
+});
+
+test('a confirmed upload caches ciphertext and encrypted metadata, not the original image', async () => {
+  const original = new Blob(['private photo'], { type: 'image/jpeg' });
+  const ciphertext = new Blob(['encrypted bytes'], { type: 'application/octet-stream' });
+  const metadata = { v: 1, iv: 'iv', ciphertext: 'encrypted metadata' };
+  let saved, cloudConfirmed = false;
+  const api = mockedModule('../app/firebase-data.ts', {
+    './firebase': { db: {}, storage: {} },
+    './media-cache': { cacheMedia: async value => { assert.equal(cloudConfirmed, true); saved = value; } },
+    'firebase/firestore': { doc: () => ({}), getDoc: async () => ({ exists: () => false }), serverTimestamp: () => 1, setDoc: async () => { cloudConfirmed = true; } },
+    'firebase/storage': { ref: (_storage, path) => path, uploadBytesResumable: (_ref, blob) => { assert.equal(blob, ciphertext); return { on: (_event, _progress, _error, complete) => complete() }; } },
+    './e2ee': { E2EE_ENABLED: true, getSessionKey: () => ({}), encryptMediaBlob: async () => ciphertext, encryptPayload: async () => metadata },
+  });
+  const { url: _url, ...item } = profile;
+  const url = await api.uploadCloudMedia('owner', item, original);
+  assert.equal(saved.uid, 'owner'); assert.equal(saved.id, profile.id); assert.equal(saved.blob, ciphertext); assert.equal(saved.metadata, metadata);
+  assert.notEqual(saved.blob, original); URL.revokeObjectURL(url);
 });

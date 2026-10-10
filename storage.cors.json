@@ -1,0 +1,23 @@
+[
+  {
+    "origin": [
+      "https://keepsake.scrumdaddy.chatgpt.site",
+      "http://localhost:3000",
+      "http://127.0.0.1:3000"
+    ],
+    "method": [
+      "GET",
+      "HEAD"
+    ],
+    "responseHeader": [
+      "Authorization",
+      "X-Firebase-AppCheck",
+      "X-Firebase-Storage-Version",
+      "Content-Type",
+      "Content-Length",
+      "Content-Disposition",
+      "ETag"
+    ],
+    "maxAgeSeconds": 3600
+  }
+]

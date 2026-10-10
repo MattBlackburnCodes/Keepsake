@@ -1,3 +1,4 @@
+import { cacheMedia, cachedMedia, cachedMediaList, removeCachedMedia } from "./media-cache";
 import { collection, deleteDoc, doc, getDoc, getDocs, serverTimestamp, setDoc } from "firebase/firestore";
 import { deleteObject, getBlob, getDownloadURL, ref, uploadBytesResumable } from "firebase/storage";
 import { db, storage } from "./firebase";
@@ -105,14 +106,21 @@ export async function uploadCloudMedia(uid: string, item: MediaMetadata, file: B
   const metadata = await encryptPayload(key, clean(item), `keepsake:media-metadata:${uid}:${item.id}:v1`);
   await setDoc(mediaRef, { cryptoVersion: 1, storagePath, metadata, updatedAt: serverTimestamp() });
   if (previousPath && previousPath !== storagePath && previous.data()?.cryptoVersion === 1) await deleteObject(ref(storage, previousPath)).catch(() => undefined);
+  await cacheMedia({ uid, id: item.id, storagePath, metadata, blob: encryptedFile }).catch(() => undefined);
   return URL.createObjectURL(file);
 }
 
 export async function loadCloudMedia(uid: string, onError?: (id: string, error: unknown) => void) {
-  const snapshot = await getDocs(collection(db, "users", uid, "media"));
+  let documents: { id: string; data: () => Record<string, unknown> }[];
+  try { documents = (await getDocs(collection(db, "users", uid, "media"))).docs; }
+  catch (error) {
+    onError?.("media-list", error);
+    const cached = await cachedMediaList(uid).catch(() => []);
+    documents = cached.map(item => ({ id: item.id, data: () => ({ cryptoVersion: 1, storagePath: item.storagePath, metadata: item.metadata }) }));
+  }
   const loaded: CloudMediaRecord[] = [];
   // Process sequentially so several large videos never occupy memory together.
-  for (const mediaDoc of snapshot.docs) {
+  for (const mediaDoc of documents) {
     try {
       const data = mediaDoc.data();
       const id = mediaDoc.id;
@@ -120,8 +128,13 @@ export async function loadCloudMedia(uid: string, onError?: (id: string, error: 
         const key = getSessionKey(uid);
         if (!key) throw new Error("Keepsake is locked.");
         const item = await decryptPayload<MediaMetadata>(key, data.metadata as EncryptedPayload, `keepsake:media-metadata:${uid}:${id}:v1`);
-        const encryptedBlob = await getBlob(ref(storage, data.storagePath as string));
+        const storagePath = data.storagePath as string;
+        const cached = await cachedMedia(uid, id).catch(() => undefined);
+        const matchingCache = cached && cached.storagePath === storagePath && JSON.stringify(cached.metadata) === JSON.stringify(data.metadata);
+        // Ciphertext already confirmed on this device can be opened without another download.
+        const encryptedBlob = matchingCache ? cached.blob : await getBlob(ref(storage, storagePath));
         const blob = await decryptMediaBlob(key, encryptedBlob, `keepsake:media:${uid}:${id}:v1`);
+        await cacheMedia({ uid, id, storagePath, metadata: data.metadata as EncryptedPayload, blob: encryptedBlob }).catch(() => undefined);
         loaded.push({ ...item, id, url: URL.createObjectURL(blob) });
         continue;
       }
@@ -164,6 +177,7 @@ export async function deleteCloudMedia(uid: string, id: string) {
     if (legacyStoragePath && legacyStoragePath !== storagePath) await deleteObject(ref(storage, legacyStoragePath)).catch(() => undefined);
   }
   await deleteDoc(mediaRef);
+  await removeCachedMedia(uid, id).catch(() => undefined);
 }
 
 export async function updateCloudMediaMetadata(uid: string, id: string, updates: { name?: string; caption?: string; takenAt?: string }) {
@@ -180,6 +194,8 @@ export async function updateCloudMediaMetadata(uid: string, id: string, updates:
   const current = await decryptPayload<MediaMetadata>(key, data.metadata, `keepsake:media-metadata:${uid}:${id}:v1`);
   const metadata = await encryptPayload(key, { ...current, ...clean(updates) }, `keepsake:media-metadata:${uid}:${id}:v1`);
   await setDoc(mediaRef, { metadata, updatedAt: serverTimestamp() }, { merge: true });
+  const cached = await cachedMedia(uid, id).catch(() => undefined);
+  if (cached) await cacheMedia({ ...cached, metadata }).catch(() => undefined);
 }
 
 export async function deleteCloudAccountData(uid: string) {
