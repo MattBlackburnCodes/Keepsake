@@ -30,14 +30,22 @@ function asArrayBuffer(bytes: Uint8Array) {
 }
 
 function recoveryBytesToText(bytes: Uint8Array) {
-  const hex = Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("").toUpperCase();
-  return hex.match(/.{1,4}/g)?.join("-") ?? hex;
+  const compact = bytesToBase64(bytes).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+  const groups = compact.slice(3).match(/.{1,4}/g) ?? [];
+  return [compact.slice(0, 3), ...groups].join(" ");
 }
 
 function recoveryTextToBytes(value: string) {
-  const normalized = value.replace(/[^a-fA-F0-9]/g, "");
-  if (normalized.length !== 64) throw new Error("Enter the complete 16-group recovery key.");
-  return Uint8Array.from(normalized.match(/.{2}/g) ?? [], (pair) => Number.parseInt(pair, 16));
+  const legacyHex = value.replace(/[\s-]/g, "");
+  if (/^[a-fA-F0-9]{64}$/.test(legacyHex)) {
+    return Uint8Array.from(legacyHex.match(/.{2}/g) ?? [], (pair) => Number.parseInt(pair, 16));
+  }
+  const compact = value.replace(/\s/g, "");
+  if (!/^[A-Za-z0-9_-]{43}$/.test(compact)) throw new Error("Enter the complete recovery key.");
+  const standardBase64 = compact.replace(/-/g, "+").replace(/_/g, "/") + "=";
+  const decoded = base64ToBytes(standardBase64);
+  if (decoded.length !== 32) throw new Error("Enter the complete recovery key.");
+  return decoded;
 }
 
 function openKeyDatabase() {

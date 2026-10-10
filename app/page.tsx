@@ -446,7 +446,7 @@ function EncryptionGate({ user, ready }: { user: AuthUser; ready: () => void }) 
     const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([contents], { type: "text/plain" })); link.download = "keepsake-recovery-key.txt"; link.click(); window.setTimeout(() => URL.revokeObjectURL(link.href), 1000);
   };
   const finishSetup = async () => {
-    const finalGroup = recoveryKey.split("-").at(-1) ?? "";
+    const finalGroup = recoveryKey.trim().split(recoveryKey.includes(" ") ? /\s+/ : "-").at(-1) ?? "";
     if (!confirmed || enteredKey.trim().toUpperCase() !== finalGroup) return setError("Save the key, check the confirmation box, and enter its final group.");
     setBusy(true); setError("");
     try { await activateAccountEncryption(user.uid); localStorage.removeItem(pendingKeyName); setRecoveryKey(""); ready(); }

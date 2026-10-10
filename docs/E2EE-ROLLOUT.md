@@ -18,6 +18,7 @@ Account email, display name, subscription state, encrypted object paths, ciphert
 - Every payload and every 1 MiB media chunk uses a fresh 96-bit IV and authenticated context.
 - The account data key is stored as a non-extractable `CryptoKey` in IndexedDB on a trusted browser.
 - Firebase receives the wrapped account key and ciphertext, never the recovery secret.
+- New recovery keys use a compact 43-character Base64URL representation. The decoder remains backward-compatible with the original 64-character hexadecimal format, so existing recovery keys are not replaced or invalidated.
 
 ## Preview checklist
 
