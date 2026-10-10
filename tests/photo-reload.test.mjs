@@ -16,7 +16,7 @@ const profile = { id: 'profile-123', personId: 123, type: 'profile', url: 'blob:
 const cover = { id: 'cover-123', personId: 123, type: 'cover', url: 'blob:decrypted-cover', size: 10 };
 
 function harness(loadMedia, loadState = async () => ({ people: [person], notes: [], inbox: [], reminders: { enabled: false }, darkMode: false })) {
-  const states = [], deps = [], cleanups = [], listeners = {};
+  const states = [], deps = [], cleanups = [], listeners = {}, timers = new Map(); let timerId = 0;
   let cursor = 0, effects = [], authCallback, loads = 0, saves = 0;
   const jsx = (type, props) => ({ type, props });
   const firebaseUser = { uid: 'owner', email: 'owner@example.com', emailVerified: true, displayName: 'Owner' };
@@ -32,13 +32,15 @@ function harness(loadMedia, loadState = async () => ({ people: [person], notes: 
     './e2ee': { E2EE_ENABLED: false },
     './subscriptions': {},
     './firebase-data': { ensureUserProfile: async () => {}, loadCloudState: loadState, loadCloudMedia: async (_uid, onError) => { loads++; return loadMedia(onError); }, saveCloudState: async () => { saves++; } },
-  }, { localStorage: { getItem: () => null, setItem() {} }, document: { visibilityState: 'visible', addEventListener() {}, removeEventListener() {}, documentElement: { dataset: {} } }, window: { location: { hash: '/people/123', search: '' }, addEventListener: (name, fn) => { listeners[name] = fn; }, removeEventListener() {}, setTimeout: () => 1, clearTimeout() {} } });
+  }, { localStorage: { getItem: () => null, setItem() {} }, document: { visibilityState: 'visible', addEventListener() {}, removeEventListener() {}, documentElement: { dataset: {} } }, window: { location: { hash: '/people/123', search: '' }, addEventListener: (name, fn) => { listeners[name] = fn; }, removeEventListener() {}, setTimeout: (fn, ms) => { const id = ++timerId; timers.set(id, { fn, ms }); return id; }, clearTimeout: id => timers.delete(id) } });
   return {
     render() { cursor = 0; return app.default(); },
     flush() { const pending = effects; effects = []; pending.forEach(fn => fn()); },
     async login() { authCallback(firebaseUser); await tick(); },
     counts: () => ({ loads, saves }),
+    timeout(ms) { for (const [id, timer] of timers) if (timer.ms === ms) { timers.delete(id); timer.fn(); } },
     people: () => states[6], media: () => states[7],
+    uploaded(item) { states[7] = [...states[7].filter(old => old.id !== item.id), item]; },
     retry() { const node = this.render(); const find = value => { if (!value || typeof value !== 'object') return; if (value.type === 'button' && value.props.children === 'Retry media') return value; for (const child of Object.values(value)) { if (typeof child === 'function') continue; const match = find(child); if (match) return match; } }; const button = find(node); assert.ok(button); button.props.onClick(); },
   };
 }
@@ -75,4 +77,29 @@ test('encrypted media loader reports a failed file and continues decrypting othe
   assert.equal(errors[0].id, profile.id); assert.equal(errors[0].error.message, 'download failed');
   assert.equal(loaded.length, 1); assert.equal(loaded[0].id, cover.id); assert.match(loaded[0].url, /^blob:/);
   URL.revokeObjectURL(loaded[0].url);
+});
+
+test('a stalled media download does not block access to profiles and notes', async () => {
+  const h = harness(() => new Promise(() => {})); await start(h);
+  assert.equal(h.people()[0].name, 'Person');
+  assert.doesNotMatch(JSON.stringify(h.render()), /Loading your saved memories/);
+  h.timeout(60000); await tick();
+  assert.match(JSON.stringify(h.render()), /media could not be loaded/);
+});
+test('a stalled account read times out to an actionable retry screen', async () => {
+  const h = harness(async () => [], () => new Promise(() => {})); await start(h);
+  assert.match(JSON.stringify(h.render()), /Loading your saved memories/);
+  h.timeout(20000); await tick();
+  assert.match(JSON.stringify(h.render()), /Your saved memories could not be loaded/);
+  assert.equal(h.counts().saves, 0);
+});
+
+test('a new upload wins over an older background download of the same photo', async () => {
+  let resolve; const pending = new Promise(r => { resolve = r; });
+  const h = harness(() => pending); await start(h);
+  const uploaded = { ...profile, url: 'blob:new-upload' };
+  h.uploaded(uploaded); h.render(); h.flush();
+  resolve([profile]); await tick(); h.render(); h.flush();
+  assert.equal(h.media()[0].url, uploaded.url);
+  assert.equal(h.people()[0].image, uploaded.url);
 });

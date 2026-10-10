@@ -56,6 +56,13 @@ async function loadLocalMedia(owner: string) {
   return new Promise<MediaItem[]>((resolve, reject) => { const request = db.transaction("files", "readonly").objectStore("files").getAll(); request.onsuccess = () => resolve(request.result.filter((entry) => entry.owner === owner).map((entry) => ({ id: entry.id, personId: entry.personId, type: entry.type, name: entry.name, size: entry.size, duration: entry.duration, caption: entry.caption, takenAt: entry.takenAt, createdAt: entry.createdAt, url: URL.createObjectURL(entry.blob) }))); request.onerror = () => reject(request.error); });
 }
 
+function withLoadTimeout<T>(operation: Promise<T>, milliseconds = 20000): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error("Keepsake loading timed out.")), milliseconds);
+    operation.then((value) => { window.clearTimeout(timer); resolve(value); }, (error) => { window.clearTimeout(timer); reject(error); });
+  });
+}
+
 async function loadMedia(onError?: (id: string, error: unknown) => void) {
   if (!auth.currentUser) throw new Error("Sign in before loading media.");
   return loadCloudMedia(auth.currentUser.uid, onError) as Promise<MediaItem[]>;
@@ -580,20 +587,30 @@ export default function KeepsakeApp() {
     setSyncStatus("loading");
     let cancelled = false;
     const load = async () => {
-      await ensureUserProfile(user.uid, user.name, user.email);
+      // Profile maintenance must not block reading memories when writes are offline.
+      ensureUserProfile(user.uid, user.name, user.email).catch(() => undefined);
       const localPeople: Person[] = JSON.parse(localStorage.getItem(`keepsake-people:${user.email}`) ?? "[]");
       const localNotes: KeepsakeNote[] = JSON.parse(localStorage.getItem(`keepsake-notes:${user.email}`) ?? "[]");
       const localInbox: InboxItem[] = JSON.parse(localStorage.getItem(`keepsake-inbox:${user.email}`) ?? "[]");
       const localReminders: ReminderSettings = JSON.parse(localStorage.getItem(`keepsake-reminders:${user.email}`) ?? JSON.stringify({ enabled: false, frequency: "weekly", time: "19:00", prompts: true }));
       const localDarkMode = localStorage.getItem(`keepsake-theme:${user.email}`) === "dark";
-      const cloud = await loadCloudState(user.uid);
+      const cloud = await withLoadTimeout(loadCloudState(user.uid));
+      if (cancelled) return;
       const nextPeople = (cloud?.people ?? localPeople) as Person[];
       const nextNotes = (cloud?.notes ?? localNotes) as KeepsakeNote[];
       const nextInbox = (cloud?.inbox ?? localInbox) as InboxItem[];
       const nextReminders = (cloud?.reminders ?? localReminders) as ReminderSettings;
       const nextDarkMode = cloud?.darkMode ?? localDarkMode;
+      // Open the account after its structured data loads; media can take much longer.
+      setPeople(nextPeople.map((person) => ({ ...person, image: previousMedia.find((item) => item.personId === person.id && item.type === "profile")?.url ?? "", cover: previousMedia.find((item) => item.personId === person.id && item.type === "cover")?.url ?? "" })));
+      setMedia(previousMedia);
+      setNotes(nextNotes); setInbox(nextInbox); setReminders(nextReminders); setDarkMode(nextDarkMode);
+      setDataOwner(user.uid);
+      setSyncStatus("saved");
       const failedIds = new Set<string>();
-      let cloudMedia = await loadMedia((id) => failedIds.add(id));
+      let cloudMedia: MediaItem[];
+      try { cloudMedia = await withLoadTimeout(loadMedia((id) => failedIds.add(id)), 60000); }
+      catch { if (!cancelled) setMediaLoadError("Your profiles and notes are ready, but media could not be loaded. Check your connection and retry."); return; }
       if (!cloudMedia.length && !failedIds.size) {
         const legacyMedia = await loadLocalMedia(user.email).catch(() => []);
         cloudMedia = await Promise.all(legacyMedia.map(async ({ url, ...item }) => {
@@ -604,22 +621,27 @@ export default function KeepsakeApp() {
         }));
       }
       if (cancelled) return;
-      cloudMedia = [...cloudMedia, ...previousMedia.filter((item) => failedIds.has(item.id))];
-      setMedia(cloudMedia);
+      // A photo uploaded while background loading runs wins over the older snapshot.
+      const baseline = new Map(previousMedia.map((item) => [item.id, item]));
+      setMedia((current) => {
+        const changed = current.filter((item) => baseline.get(item.id) !== item);
+        const changedIds = new Set(changed.map((item) => item.id));
+        return [...cloudMedia.filter((item) => !changedIds.has(item.id)), ...current.filter((item) => failedIds.has(item.id) && !changedIds.has(item.id)), ...changed];
+      });
       setMediaLoadError(failedIds.size ? "Some photos or recordings could not be downloaded or decrypted. Your uploaded files have not been deleted. Check your connection and retry." : "");
-      setPeople(nextPeople.map((person) => ({ ...person, image: cloudMedia.find((item) => item.personId === person.id && item.type === "profile")?.url ?? "", cover: cloudMedia.find((item) => item.personId === person.id && item.type === "cover")?.url ?? "" })));
-      setNotes(nextNotes); setInbox(nextInbox); setReminders(nextReminders); setDarkMode(nextDarkMode);
-      setSelected(null);
-      if (!cloud) await saveCloudState(user.uid, { people: nextPeople, notes: nextNotes, inbox: nextInbox, reminders: nextReminders, darkMode: nextDarkMode });
-      if (cancelled) return;
-      setDataOwner(user.uid);
-      setSyncStatus("saved");
     };
     load().catch(() => { if (!cancelled) setSyncStatus("error"); });
     return () => { cancelled = true; };
     // Subscription refreshes replace user; only account/unlock changes need hydration.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.uid, user?.emailVerified, encryptionReady, loadAttempt]);
+  useEffect(() => {
+    if (!user || dataOwner !== user.uid) return;
+    setPeople((current) => current.map((person) => ({ ...person,
+      image: media.find((item) => item.personId === person.id && item.type === "profile")?.url ?? person.image,
+      cover: media.find((item) => item.personId === person.id && item.type === "cover")?.url ?? person.cover,
+    })));
+  }, [media, dataOwner, user?.uid]);
   useEffect(() => {
     if (!authReady || !user || !user.emailVerified || !encryptionReady || dataOwner !== user.uid) return;
     if (!E2EE_ENABLED) {
