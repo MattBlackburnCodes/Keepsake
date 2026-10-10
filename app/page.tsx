@@ -56,9 +56,9 @@ async function loadLocalMedia(owner: string) {
   return new Promise<MediaItem[]>((resolve, reject) => { const request = db.transaction("files", "readonly").objectStore("files").getAll(); request.onsuccess = () => resolve(request.result.filter((entry) => entry.owner === owner).map((entry) => ({ id: entry.id, personId: entry.personId, type: entry.type, name: entry.name, size: entry.size, duration: entry.duration, caption: entry.caption, takenAt: entry.takenAt, createdAt: entry.createdAt, url: URL.createObjectURL(entry.blob) }))); request.onerror = () => reject(request.error); });
 }
 
-async function loadMedia() {
+async function loadMedia(onError?: (id: string, error: unknown) => void) {
   if (!auth.currentUser) throw new Error("Sign in before loading media.");
-  return loadCloudMedia(auth.currentUser.uid) as Promise<MediaItem[]>;
+  return loadCloudMedia(auth.currentUser.uid, onError) as Promise<MediaItem[]>;
 }
 
 async function storeMedia(_owner: string, item: Omit<MediaItem, "url">, blob: File, onProgress?: (percent: number) => void) {
@@ -478,6 +478,8 @@ export default function KeepsakeApp() {
   const [notes, setNotes] = useState<KeepsakeNote[]>([]); const [inbox, setInbox] = useState<InboxItem[]>([]); const [people, setPeople] = useState<Person[]>([]); const [media, setMedia] = useState<MediaItem[]>([]); const [dataOwner, setDataOwner] = useState("");
   const [darkMode, setDarkMode] = useState(false); const [captureOpen, setCaptureOpen] = useState(false); const [reminders, setReminders] = useState<ReminderSettings>({ enabled: false, frequency: "weekly", time: "19:00", prompts: true });
   const [syncStatus, setSyncStatus] = useState<"loading" | "saving" | "saved" | "error">("loading");
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const [mediaLoadError, setMediaLoadError] = useState("");
   const [subscriptionStatus, setSubscriptionStatus] = useState<SubscriptionStatus>("idle");
   const [managementUrl, setManagementUrl] = useState<string | null>(null);
   const [encryptionReady, setEncryptionReady] = useState(!E2EE_ENABLED);
@@ -573,6 +575,8 @@ export default function KeepsakeApp() {
   }, [user?.uid, user?.emailVerified]);
   useEffect(() => {
     if (!user || !user.emailVerified || !encryptionReady) return;
+    const previousMedia = dataOwner === user.uid ? media : [];
+    setDataOwner("");
     setSyncStatus("loading");
     let cancelled = false;
     const load = async () => {
@@ -588,10 +592,9 @@ export default function KeepsakeApp() {
       const nextInbox = (cloud?.inbox ?? localInbox) as InboxItem[];
       const nextReminders = (cloud?.reminders ?? localReminders) as ReminderSettings;
       const nextDarkMode = cloud?.darkMode ?? localDarkMode;
-      setPeople(nextPeople.map((person) => ({ ...person, image: "", cover: "" })));
-      setNotes(nextNotes); setInbox(nextInbox); setReminders(nextReminders); setDarkMode(nextDarkMode);
-      let cloudMedia = await loadMedia();
-      if (!cloudMedia.length) {
+      const failedIds = new Set<string>();
+      let cloudMedia = await loadMedia((id) => failedIds.add(id));
+      if (!cloudMedia.length && !failedIds.size) {
         const legacyMedia = await loadLocalMedia(user.email).catch(() => []);
         cloudMedia = await Promise.all(legacyMedia.map(async ({ url, ...item }) => {
           const blob = await fetch(url).then((response) => response.blob());
@@ -601,15 +604,22 @@ export default function KeepsakeApp() {
         }));
       }
       if (cancelled) return;
+      cloudMedia = [...cloudMedia, ...previousMedia.filter((item) => failedIds.has(item.id))];
       setMedia(cloudMedia);
+      setMediaLoadError(failedIds.size ? "Some photos or recordings could not be downloaded or decrypted. Your uploaded files have not been deleted. Check your connection and retry." : "");
       setPeople(nextPeople.map((person) => ({ ...person, image: cloudMedia.find((item) => item.personId === person.id && item.type === "profile")?.url ?? "", cover: cloudMedia.find((item) => item.personId === person.id && item.type === "cover")?.url ?? "" })));
-      setSelected(null); setDataOwner(user.uid);
+      setNotes(nextNotes); setInbox(nextInbox); setReminders(nextReminders); setDarkMode(nextDarkMode);
+      setSelected(null);
       if (!cloud) await saveCloudState(user.uid, { people: nextPeople, notes: nextNotes, inbox: nextInbox, reminders: nextReminders, darkMode: nextDarkMode });
+      if (cancelled) return;
+      setDataOwner(user.uid);
       setSyncStatus("saved");
     };
-    load().catch(() => { if (!cancelled) { setDataOwner(user.uid); setSyncStatus("error"); } });
+    load().catch(() => { if (!cancelled) setSyncStatus("error"); });
     return () => { cancelled = true; };
-  }, [user, encryptionReady]);
+    // Subscription refreshes replace user; only account/unlock changes need hydration.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.uid, user?.emailVerified, encryptionReady, loadAttempt]);
   useEffect(() => {
     if (!authReady || !user || !user.emailVerified || !encryptionReady || dataOwner !== user.uid) return;
     if (!E2EE_ENABLED) {
@@ -685,12 +695,14 @@ export default function KeepsakeApp() {
   if (!user) return <AuthScreen onAuthenticated={authenticate} />;
   if (!user.emailVerified) return <VerifyEmailScreen user={user} verified={(verifiedUser) => { setUser(verifiedUser); setScreen("home"); }} useAnotherAccount={signOut} />;
   if (!encryptionReady) return <EncryptionGate user={user} ready={() => setEncryptionReady(true)} />;
-  const shell = (content: React.ReactNode) => <div className="app-shell"><Sidebar screen={screen} go={go} user={user} /><main>{content}</main><SyncStatus status={syncStatus} /><BottomNav screen={screen} go={go} alertCount={alertCount} /></div>;
+  if (dataOwner !== user.uid) return <div className="auth-loading"><img src="/keepsake-logo-hd.png" alt="Keepsake" />{syncStatus === "error" ? <><span role="alert">Your saved memories could not be loaded. Check your connection and try again.</span><button className="primary-btn" onClick={() => setLoadAttempt((attempt) => attempt + 1)}>Try again</button><button className="secondary-btn" onClick={signOut}>Sign out</button></> : <span>Loading your saved memories…</span>}</div>;
+  const mediaWarning = mediaLoadError ? <div className="plan-limit-notice" role="alert"><div><strong>Some media could not be loaded</strong><p>{mediaLoadError}</p></div><button className="secondary-btn" onClick={() => setLoadAttempt((attempt) => attempt + 1)}>Retry media</button></div> : null;
+  const shell = (content: React.ReactNode) => <div className="app-shell"><Sidebar screen={screen} go={go} user={user} /><main>{mediaWarning}{content}</main><SyncStatus status={syncStatus} /><BottomNav screen={screen} go={go} alertCount={alertCount} /></div>;
   if (screen === "privacy" || screen === "terms" || screen === "dataDeletion") return shell(<LegalPage kind={screen} go={go} />);
   if (screen === "changePassword") return shell(<ChangePasswordPage user={user} go={go} />);
   if (screen === "admin") return shell(<AdminPage user={user} go={go} />);
   if (screen === "about") return shell(<AboutPage go={go} />);
   if (screen === "settings") return shell(<><Settings user={user} signOut={signOut} deleteAccount={deleteAccount} darkMode={darkMode} setDarkMode={setDarkMode} reminders={reminders} setReminders={setReminders} peopleCount={people.length} media={media} subscriptionStatus={subscriptionStatus} startCheckout={startCheckout} refreshSubscription={refreshSubscription} manageSubscription={manageSubscription} /><ExportBackup exportBackup={exportBackup} printStories={printStories} /><SettingsLinks go={go} admin={user.admin} />{undoNotice && <div className="undo-toast" role="status"><span>{undoNotice.message}</span><button onClick={undoNotice.restore}>Undo</button></div>}</>);
   const render = () => { switch (screen) { case "home": return <Home go={go} select={select} user={user} people={people} notes={notes} media={media} inbox={inbox} openCapture={() => setCaptureOpen(true)} reminders={reminders} />; case "inbox": return <Inbox items={inbox} people={people} media={media} assign={assignInbox} remove={removeInbox} edit={editInbox} openCapture={() => setCaptureOpen(true)} />; case "people": return <People go={go} select={select} people={people} plan={plan} />; case "profile": return selected ? <Profile person={selected} go={go} media={media} notes={notes} addNote={addNote} updateNote={updateNote} removeNote={removeNote} updateProfilePhoto={updateProfilePhoto} updateCoverPhoto={updateCoverPhoto} updatePersonDetails={updatePersonDetails} deletePerson={deletePerson} deleteMediaItem={deleteMediaItem} updateMediaDetails={updateMediaDetails} /> : <People go={go} select={select} people={people} plan={plan} />; case "notes": return selected ? <Profile person={selected} go={go} media={media} notes={notes} addNote={addNote} updateNote={updateNote} removeNote={removeNote} updateProfilePhoto={updateProfilePhoto} updateCoverPhoto={updateCoverPhoto} updatePersonDetails={updatePersonDetails} deletePerson={deletePerson} deleteMediaItem={deleteMediaItem} updateMediaDetails={updateMediaDetails} /> : <People go={go} select={select} people={people} plan={plan} />; case "add": return selected ? <AddMemory person={selected} people={people} selectPerson={(person) => setSelected(person)} go={go} media={media} uploadMedia={uploadMedia} plan={plan} /> : <PersonForm person={null} go={go} savePerson={savePerson} existingPeople={people} canAdd={canAddPerson} />; case "search": return <Search select={select} people={people} notes={notes} media={media} />; case "alerts": return <Alerts people={people} inbox={inbox} reminders={reminders} go={go} select={select} />; case "personForm": return <PersonForm person={selected} go={go} savePerson={savePerson} existingPeople={people} canAdd={canAddPerson} />; } };
-  return <div className="app-shell"><Sidebar screen={screen} go={go} user={user} /><main>{render()}</main><SyncStatus status={syncStatus} />{undoNotice && <div className="undo-toast" role="status"><span>{undoNotice.message}</span><button onClick={undoNotice.restore}>Undo</button></div>}<QuickCapture open={captureOpen} close={() => setCaptureOpen(false)} saveText={saveInboxText} saveVoice={saveInboxVoice} /><BottomNav screen={screen} go={go} alertCount={alertCount} /></div>;
+  return <div className="app-shell"><Sidebar screen={screen} go={go} user={user} /><main>{mediaWarning}{render()}</main><SyncStatus status={syncStatus} />{undoNotice && <div className="undo-toast" role="status"><span>{undoNotice.message}</span><button onClick={undoNotice.restore}>Undo</button></div>}<QuickCapture open={captureOpen} close={() => setCaptureOpen(false)} saveText={saveInboxText} saveVoice={saveInboxVoice} /><BottomNav screen={screen} go={go} alertCount={alertCount} /></div>;
 }

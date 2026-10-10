@@ -108,7 +108,7 @@ export async function uploadCloudMedia(uid: string, item: MediaMetadata, file: B
   return URL.createObjectURL(file);
 }
 
-export async function loadCloudMedia(uid: string) {
+export async function loadCloudMedia(uid: string, onError?: (id: string, error: unknown) => void) {
   const snapshot = await getDocs(collection(db, "users", uid, "media"));
   const loaded: CloudMediaRecord[] = [];
   // Process sequentially so several large videos never occupy memory together.
@@ -146,8 +146,9 @@ export async function loadCloudMedia(uid: string) {
       const metadata = await encryptPayload(key, metadataItem, `keepsake:media-metadata:${uid}:${id}:v1`);
       await setDoc(doc(db, "users", uid, "media", id), { cryptoVersion: 1, storagePath, legacyStoragePath: item.storagePath, metadata, updatedAt: serverTimestamp() });
       loaded.push({ ...metadataItem, url: URL.createObjectURL(blob) });
-    } catch {
-      // One corrupt or unavailable file must not hide the rest of the account.
+    } catch (error) {
+      // Keep loading other files, but let the UI report and retry this failure.
+      onError?.(mediaDoc.id, error);
     }
   }
   return loaded;
