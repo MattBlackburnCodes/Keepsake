@@ -15,7 +15,7 @@ const person = { id: 123, name: 'Person', image: '', cover: '', birthday: '', re
 const profile = { id: 'profile-123', personId: 123, type: 'profile', url: 'blob:decrypted-profile', size: 10 };
 const cover = { id: 'cover-123', personId: 123, type: 'cover', url: 'blob:decrypted-cover', size: 10 };
 
-function harness(loadMedia, loadState = async () => ({ people: [person], notes: [], inbox: [], reminders: { enabled: false }, darkMode: false })) {
+function harness(loadMedia, loadState = async () => ({ people: [person], notes: [], inbox: [], reminders: { enabled: false }, darkMode: false }), uploadMedia = async () => "") {
   const states = [], deps = [], cleanups = [], listeners = {}, timers = new Map(); let timerId = 0;
   let cursor = 0, effects = [], authCallback, loads = 0, saves = 0;
   const jsx = (type, props) => ({ type, props });
@@ -31,8 +31,8 @@ function harness(loadMedia, loadState = async () => ({ people: [person], notes: 
     './firebase': { auth: { currentUser: firebaseUser }, initializeAnalytics: async () => null },
     './e2ee': { E2EE_ENABLED: false },
     './subscriptions': {},
-    './firebase-data': { ensureUserProfile: async () => {}, loadCloudState: loadState, loadCloudMedia: async (_uid, onError) => { loads++; return loadMedia(onError); }, saveCloudState: async () => { saves++; } },
-  }, { localStorage: { getItem: () => null, setItem() {} }, document: { visibilityState: 'visible', addEventListener() {}, removeEventListener() {}, documentElement: { dataset: {} } }, window: { location: { hash: '/people/123', search: '' }, addEventListener: (name, fn) => { listeners[name] = fn; }, removeEventListener() {}, setTimeout: (fn, ms) => { const id = ++timerId; timers.set(id, { fn, ms }); return id; }, clearTimeout: id => timers.delete(id) } });
+    './firebase-data': { uploadCloudMedia: uploadMedia, ensureUserProfile: async () => {}, loadCloudState: loadState, loadCloudMedia: async (_uid, onError) => { loads++; return loadMedia(onError); }, saveCloudState: async () => { saves++; } },
+  }, { localStorage: { getItem: () => null, setItem() {} }, document: { visibilityState: 'visible', addEventListener() {}, removeEventListener() {}, documentElement: { dataset: {} } }, window: { location: { hash: '#/people/123', search: '' }, addEventListener: (name, fn) => { listeners[name] = fn; }, removeEventListener() {}, setTimeout: (fn, ms) => { const id = ++timerId; timers.set(id, { fn, ms }); return id; }, clearTimeout: id => timers.delete(id) } });
   return {
     render() { cursor = 0; return app.default(); },
     flush() { const pending = effects; effects = []; pending.forEach(fn => fn()); },
@@ -40,6 +40,7 @@ function harness(loadMedia, loadState = async () => ({ people: [person], notes: 
     counts: () => ({ loads, saves }),
     timeout(ms) { for (const [id, timer] of timers) if (timer.ms === ms) { timers.delete(id); timer.fn(); } },
     people: () => states[6], media: () => states[7],
+    profileProps() { const find = value => { if (!value || typeof value !== "object") return; if (value.props?.updateProfilePhoto) return value.props; for (const child of Object.values(value)) { if (typeof child === "function") continue; const match = find(child); if (match) return match; } }; return find(this.render()); },
     uploaded(item) { states[7] = [...states[7].filter(old => old.id !== item.id), item]; },
     retry() { const node = this.render(); const find = value => { if (!value || typeof value !== 'object') return; if (value.type === 'button' && value.props.children === 'Retry media') return value; for (const child of Object.values(value)) { if (typeof child === 'function') continue; const match = find(child); if (match) return match; } }; const button = find(node); assert.ok(button); button.props.onClick(); },
   };
@@ -143,4 +144,31 @@ test('a confirmed upload caches ciphertext and encrypted metadata, not the origi
   const url = await api.uploadCloudMedia('owner', item, original);
   assert.equal(saved.uid, 'owner'); assert.equal(saved.id, profile.id); assert.equal(saved.blob, ciphertext); assert.equal(saved.metadata, metadata);
   assert.notEqual(saved.blob, original); URL.revokeObjectURL(url);
+});
+
+test('overlapping portrait and cover uploads preserve both pictures before revisiting the profile', async () => {
+  const uploads = new Map();
+  const h = harness(async () => [profile, cover], undefined, async (_uid, item) => new Promise(resolve => uploads.set(item.type, resolve)));
+  await start(h); h.render(); h.flush(); h.render(); h.flush();
+  const file = new Blob(['image'], { type: 'image/jpeg' }); file.name = 'image.jpg';
+  const portraitUpload = h.profileProps().updateProfilePhoto(file);
+  h.render(); h.flush();
+  const coverUpload = h.profileProps().updateCoverPhoto(file);
+  await tick();
+  uploads.get('cover')('blob:new-cover'); await coverUpload;
+  uploads.get('profile')('blob:new-profile'); await portraitUpload;
+  assert.equal(h.people()[0].image, 'blob:new-profile');
+  assert.equal(h.people()[0].cover, 'blob:new-cover');
+});
+
+test('recovery confirmation preserves Base64url case and supports legacy hexadecimal keys', () => {
+  const api = mockedModule('../app/e2ee.ts', {}, { process: { env: {} }, TextEncoder, TextDecoder });
+  const key = 'A'.repeat(39) + 'aB-_';
+  assert.equal(api.recoveryKeyConfirmationMatches(key, 'aB-_'), true);
+  assert.equal(api.recoveryKeyConfirmationMatches(key, 'AB-_'), false);
+  assert.equal(api.recoveryKeyConfirmationMatches(key.match(/.{1,4}/g).join(' '), ' aB-_ '), true);
+  const legacy = 'a'.repeat(60) + 'bCde';
+  assert.equal(api.recoveryKeyConfirmationMatches(legacy.match(/.{1,4}/g).join('-'), 'BCDE'), true);
+  assert.equal(api.recoveryKeyConfirmationMatches(legacy, 'bcde'), true);
+  assert.equal(api.recoveryKeyConfirmationMatches('', ''), false);
 });

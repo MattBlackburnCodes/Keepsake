@@ -35,6 +35,17 @@ function recoveryBytesToText(bytes: Uint8Array) {
   return [compact.slice(0, 3), ...groups].join(" ");
 }
 
+export function recoveryKeyConfirmationMatches(recoveryKey: string, enteredGroup: string) {
+  const legacyHex = recoveryKey.replace(/[\s-]/g, "");
+  const entered = enteredGroup.trim();
+  if (/^[a-fA-F0-9]{64}$/.test(legacyHex)) {
+    return entered.toLowerCase() === legacyHex.slice(-4).toLowerCase();
+  }
+  // Base64url keys preserve case; a hyphen is a key character, not a separator.
+  const compact = recoveryKey.replace(/\s/g, "");
+  return /^[A-Za-z0-9_-]{43}$/.test(compact) && entered === compact.slice(-4);
+}
+
 function recoveryTextToBytes(value: string) {
   const legacyHex = value.replace(/[\s-]/g, "");
   if (/^[a-fA-F0-9]{64}$/.test(legacyHex)) {
