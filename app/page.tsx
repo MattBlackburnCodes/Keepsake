@@ -396,7 +396,138 @@ function ChangePasswordPage({ user, go }: { user: AuthUser; go: (screen: Screen)
 }
 
 function LegalPage({ kind, go }: { kind: "privacy" | "terms" | "dataDeletion"; go: (screen: Screen) => void }) {
-  const content = kind === "privacy" ? { eyebrow: "Effective August 29, 2026", title: "Privacy Policy", sections: [["What Keepsake stores", "Keepsake stores account details, people profiles, notes, favorites, dates, reminders, and media you choose to upload. Firebase Authentication manages sign-in; Cloud Firestore stores structured records; Cloud Storage stores uploaded files."], ["A private-by-design admin experience", E2EE_ENABLED ? "This preview encrypts profiles, notes, reminders, photos, videos, and voice recordings on your device before upload. During the guarded migration, legacy plaintext rollback copies may temporarily remain in the account until recovery testing and cleanup are complete. Basic account and operational information—such as email address, subscription status, object sizes, and timestamps—is not end-to-end encrypted." : "The Keepsake admin interface cannot display or search the content of your people, notes, photos, videos, or voice recordings. Operational administrators see only service health and non-content account information needed to run the service. Firebase project personnel with exceptional infrastructure access may technically access backend data for security, legal, recovery, or support purposes. End-to-end encryption is undergoing private testing and is not enabled in this build."], ["How data is used", "Data is used to provide syncing, account recovery, storage, reminders, support, fraud prevention, and service operation. Keepsake does not sell private memory content or use it for advertising."], ["Retention and deletion", "Your information remains until you delete individual records or your account, subject to limited security logs, backups, legal obligations, and reasonable deletion processing periods."], ["Security", E2EE_ENABLED ? "Your recovery key is not sent to Blackburn Works. Losing every trusted device and the recovery key makes encrypted content permanently unrecoverable. Keep an independent copy of irreplaceable material." : "Keepsake uses authenticated, user-specific Firebase paths and access rules. No online system can promise absolute security, so use a unique password and protect access to your email account."], ["Contact", "Privacy questions can be directed to Blackburn Works through the support contact published with the hosted service."]] } : kind === "terms" ? { eyebrow: "Effective August 29, 2026", title: "Terms of Use", sections: [["Using Keepsake", "You may use Keepsake to preserve lawful personal memories and information. You are responsible for the material you upload and for having permission to store it."], ["Your content", "You retain ownership of your content. You grant Keepsake and its service providers the limited permission needed to store, process, transmit, back up, and display it back to you as part of the service."], ["Accounts", "Keep your credentials secure and provide accurate account information. Do not attempt to access another user’s account, bypass service limits, disrupt the service, or upload malicious or unlawful material."], ["Availability", "Keepsake is an evolving service. Features may change, and uninterrupted or error-free operation cannot be guaranteed. Keep independent copies of irreplaceable material."], ["Subscriptions", "Paid features, prices, renewals, cancellation, and refunds will be described before purchases become available. Current upgrade controls are previews and do not process payments."], ["Liability", "To the extent permitted by law, Keepsake and Blackburn Works are not responsible for indirect or consequential losses. Consumer rights that cannot legally be waived remain unaffected."]] } : { eyebrow: "Your account, your choice", title: "Account & Data Deletion", sections: [["Delete individual information", "People, notes, favorites, photos, videos, voice recordings, and inbox items can be deleted from their relevant screens. Deleting cloud media removes its Firebase Storage object and metadata."], ["Delete your account", "Open Settings and choose Delete account. After confirmation, Keepsake removes the account’s Firestore records and Cloud Storage files, then requests deletion of the Firebase Authentication account."], ["Recent sign-in requirement", "Firebase may require you to sign out and sign in again before account deletion. This protects against deletion from an unattended session."], ["Processing and backups", "Active records are removed when deletion succeeds. Limited logs or backup copies may persist temporarily for security, disaster recovery, fraud prevention, or legal compliance before aging out."], ["Before deleting", "Export or separately save anything you want to keep. Account deletion is intended to be permanent and cannot be undone through the app."]] };
+  const content = kind === "privacy" ? {
+  "eyebrow": "Effective October 17, 2026",
+  "title": "Privacy Policy",
+  "sections": [
+    [
+      "About Keepsake and this policy",
+      "Keepsake, created by Blackburn Works, is a personal memory journal. This policy covers the web app, account access, cloud storage, Quick Capture, exports, subscription services, installed-app sharing, and optional browser reminders. Your memories are not public posts. The current app has no public feed or shared family viewer."
+    ],
+    [
+      "Information you provide",
+      "We process your account name, email address, Firebase user ID, email-verification status, and plan or administrator entitlement. Firebase Authentication processes your password and account-recovery requests. Content you choose to save includes people’s names, relationships, birthdays, anniversaries, favorites, profile details, notes, Inbox captures, photos, videos, and voice recordings. Upload records include file names, sizes, types, durations where available, captions, identifiers, and timestamps. Reminder preferences and appearance settings are also saved. Profiles can also contain milestones and timelines; media can include a date taken. Support emails contain whatever information you choose to send to Blackburn Works."
+    ],
+    [
+      "How information is used",
+      "Information is used to authenticate you, send verification and password-reset emails, save and display your content, sync records across devices, enforce plan and upload limits, provide optional reminders, and operate and protect the service. Search matches your loaded records in the browser. The current app does not provide AI transcription or AI analysis of your memories. Keepsake does not sell private memory content or use that content for advertising."
+    ],
+    [
+      "Cloud services and access",
+      "Firebase Authentication handles sign-in, Cloud Firestore stores account and app records, and Cloud Storage stores uploaded files. The hosting provider also processes requests needed to deliver the web app. These providers may process technical information such as IP addresses, browser information, and operational logs under their applicable terms. Cloud data is organized under your Firebase user ID; owner-only access depends on correctly configured Firebase security rules. Account-specific paths alone do not secure data. We have not established an independent audit of deployed rules."
+    ],
+    [
+      "Administrators and security limits",
+      "The Keepsake admin console cannot display or search your people, notes, favorites, photos, videos, or voice recordings. An app administrator role does not provide a private-content viewer. Authorized infrastructure personnel and service providers may technically access unencrypted backend data for operation, security, recovery, support, or legal obligations. Encryption availability and its limits are described below. No online service can guarantee absolute security."
+    ],
+    [
+      "Encryption availability and recovery",
+      E2EE_ENABLED ? "This build enables an encryption preview that encrypts memory records, media metadata, and uploaded files on your device before cloud storage. Device keys are stored locally; your recovery key is not sent to Blackburn Works. Account identifiers, email, subscription information, storage paths, object sizes, and timestamps are not all end-to-end encrypted. Migration intentionally retains legacy plaintext rollback records and original files pending testing and cleanup, so this preview does not guarantee that every existing cloud copy is encrypted. Losing every trusted device and your recovery key makes encrypted memories permanently unrecoverable; resetting your password does not recover the key." : "End-to-end encryption is undergoing private testing and is disabled in this build. Memory records and uploaded files are not encrypted on your device before upload by this feature. Access depends on authentication and correctly configured Firebase security rules; authorized infrastructure access remains technically possible."
+    ],
+    [
+      "Analytics, cookies, and browser storage",
+      "The app initializes Google Analytics through Firebase on supported browsers, including before sign-in. Analytics may use cookies or similar identifiers to collect usage events, page URLs, browser and device information, and approximate location derived from network information. The app does not explicitly send memory text or uploaded files as analytics events. There is currently no in-app analytics preference control; browser cookie and tracking controls may limit collection. Firebase Authentication uses browser storage to maintain sign-in. Firebase App Check uses reCAPTCHA Enterprise to help distinguish legitimate app requests from abuse, involving technical device and request information. When the encryption preview is disabled, app records and preferences are copied into localStorage. Legacy local records and media may remain after migration. The encryption preview stores a device key and encrypted media cache in IndexedDB. Reminder timing and onboarding preferences also remain locally. Signing out clears the on-screen session but does not erase all stored browser data or trusted-device keys."
+    ],
+    [
+      "Microphone and notification permissions",
+      "Recording a voice note requires microphone permission and an intentional recording action. Saved recordings are uploaded to your account. The app does not listen continuously or connect to Siri, Google Assistant, email, or text-message intake. On supported browsers, installing Keepsake enables sharing text and links from another app into Quick Notes; shared input is received in the page URL and processed by the app. Browser reminders require notification permission and run while Keepsake is open; delivery while the app is closed is not currently provided. Notifications may appear on a device screen. Change reminder preferences in Settings and revoke permissions through your browser."
+    ],
+    [
+      "Devices and media links",
+      "Protect access to your device, browser profile, signed-in session, and any recovery key. Unencrypted and legacy media may use Firebase download links that can open without sign-in if obtained by someone else. Encrypted media is decrypted on an unlocked device for viewing. Encryption does not protect content already exported, printed, downloaded, displayed on an unlocked device, or retained as a legacy plaintext copy. Signing out does not revoke existing download links or erase files saved elsewhere."
+    ],
+    [
+      "Retention, choices, and deletion",
+      "Records are kept to provide your account until you remove them or request account deletion. You can edit or remove content using the available controls. Account deletion attempts to remove app records and registered cloud uploads before deleting the Firebase Authentication account. Failures can leave a partially completed deletion, including remaining files, and may require signing in again and retrying. The app cannot confirm removal from provider logs or backups and does not promise a fixed retention period for those copies. Local records on other devices, legacy media, and copies shared elsewhere are not automatically recalled. Clear this site’s browser data on each device to remove local copies; doing so also signs you out. See Account & Data Deletion before proceeding."
+    ],
+    [
+      "Subscriptions and exports",
+      "When configured, RevenueCat receives your Firebase user ID and email to identify your subscription, load entitlements, and provide checkout or management services. The checkout link includes your account identifier and may include your email. RevenueCat and checkout providers process purchase and billing information under their own terms; Keepsake’s app code does not collect payment-card fields. JSON and CSV exports contain readable personal information and media metadata but omit live media download URLs and do not include the uploaded media files. Printing stories creates readable copies. Protect these files independently, including when the encryption preview is enabled."
+    ],
+    [
+      "Information about other people",
+      "Only store information and recordings you are entitled to keep, and obtain consent where required, especially for recordings and sensitive information. Avoid including information you do not need. Depending on applicable law, you may have rights to access, correct, delete, or restrict processing of personal information and to complain to a relevant privacy authority. These rights are not limited by this policy."
+    ],
+    [
+      "Providers, questions, and updates",
+      "Contact Blackburn Works at Contact@Blackburn.Works for privacy questions or rights requests. Firebase describes its processing at https://firebase.google.com/support/privacy; Google Analytics at https://policies.google.com/technologies/partner-sites; and RevenueCat at https://www.revenuecat.com/privacy/. Providers may process information outside your country under their applicable terms and safeguards. This policy may change as the service changes; the effective date identifies this version."
+    ]
+  ]
+} : kind === "terms" ? {
+  "eyebrow": "Effective October 17, 2026",
+  "title": "Terms of Use",
+  "sections": [
+    [
+      "Agreement and current service",
+      "These Terms of Use govern your use of Keepsake, created by Blackburn Works. By using the service, you agree to these terms. Keepsake provides people profiles, favorites, notes, milestones, timelines, media, Quick Notes, search, cloud storage, JSON/CSV exports, story printing, supported installed-app sharing, and optional browser reminders. You must be legally able to enter this agreement or have any authorization required by applicable law."
+    ],
+    [
+      "Accounts and responsibility",
+      "An email/password account and verified email are required to access saved memories. Provide accurate account information, secure your credentials and recovery email, and protect your devices and media download links. You are responsible for activity you authorize through your account. Do not share an account containing private memories or attempt to access another person’s records."
+    ],
+    [
+      "Your content and permissions",
+      "Your content remains yours. You grant Keepsake and its service providers the limited permission needed to store, process, transmit, back up, and display it while providing and protecting the service. This does not transfer ownership or authorize selling your private memory content, using it for advertising, or publishing it as a public feed. You are responsible for having the rights and permissions required to store information, photos, videos, or recordings of others, including legally required recording consent."
+    ],
+    [
+      "Acceptable use",
+      "Do not upload unlawful or malicious material, infringe privacy or intellectual-property rights, misuse private media links, bypass access controls or plan limits, or interfere with the service. An administrator role does not authorize browsing users’ private memories. Keepsake does not provide a shared memory viewer or a content browser in its admin console."
+    ],
+    [
+      "Privacy and technical limits",
+      "The Privacy Policy explains Firebase services, cloud records and uploads, Analytics, App Check, RevenueCat, browser storage, and permissions. Encryption is a configurable preview, not a blanket guarantee for every build or every stored copy. When enabled, you must protect your recovery key; losing every trusted device and that key makes encrypted content unrecoverable. Password reset cannot recover the encryption key. Legacy plaintext rollback copies and operational account information may remain accessible to authorized infrastructure personnel. Protect devices, exports, and media links. Signing out does not erase all locally saved records or device keys."
+    ],
+    [
+      "Plans and upload limits",
+      "The current Free plan allows four people and 250 MB of media; Pro entitlements allow unlimited people and 5 GB of media, subject to additional account and per-person media limits shown in the app. Individual photos are limited to 10 MB, videos to 100 MB and two minutes, and voice recordings to 25 MB and five minutes. Profile and cover photos count toward storage. Cloud saving currently operates for both Free and Pro accounts. Uploads remain subject to supported formats, available storage, and successful network processing."
+    ],
+    [
+      "Subscriptions and feature availability",
+      "When configured, Upgrade opens a RevenueCat checkout link and Restore purchases refreshes subscription information. Review the checkout to determine whether it is a sandbox test or a live purchase and to confirm the actual price, currency, billing interval, renewal conditions, and applicable taxes before completing a transaction. Settings lists monthly and annual options, but the checkout controls the offer you select. Use Manage or cancel to open the provider’s subscription portal when available; refund and cancellation requests follow the terms shown at purchase and applicable law. Deleting your Keepsake account does not itself cancel provider billing. Contact Contact@Blackburn.Works if checkout or subscription management is unavailable. Family sharing, Siri/Google Assistant shortcuts, and closed-app reminders are not currently provided."
+    ],
+    [
+      "Saving, reminders, and independent copies",
+      "Saving and synchronization require successful cloud operations and may fail or be delayed. Check save status and keep independent copies of irreplaceable material. JSON/CSV exports include records and media metadata, not uploaded media binaries or live download URLs; save original media separately. Exported files and printed stories are readable even when account encryption is enabled. The app is not a guaranteed backup or archival service. Browser reminders need permission and an open app and may be delayed or blocked. Do not rely on reminders for critical deadlines."
+    ],
+    [
+      "Deletion and ending use",
+      "You may stop using Keepsake and use Settings to request account deletion. The Privacy Policy and Account & Data Deletion page describe the sequence and limitations. Deletion can partially complete before a later step fails; signing in again and retrying may be necessary. Local device keys, browser copies, provider-retained records, and files shared elsewhere are not automatically erased. Export records and separately save original media before deleting. Deletion is intended to be permanent. Manage or cancel any subscription separately through the subscription provider; account deletion does not call the provider’s cancellation service."
+    ],
+    [
+      "Availability, changes, and liability",
+      "Features and limits may change, and uninterrupted, error-free operation or recovery of lost material is not guaranteed. To the extent permitted by applicable law, Keepsake and Blackburn Works are not responsible for indirect or consequential losses. Nothing in these terms excludes liability or consumer rights that cannot legally be excluded. Updated terms will identify their effective date."
+    ],
+    [
+      "Questions",
+      "Contact Blackburn Works at Contact@Blackburn.Works for service, billing, or terms questions."
+    ]
+  ]
+} : {
+  "eyebrow": "Effective October 17, 2026",
+  "title": "Account & Data Deletion",
+  "sections": [
+    [
+      "Delete individual information",
+      "Use the relevant screen to remove people, notes, favorites, media, or Inbox items. Record changes must successfully sync to the cloud. Media deletion attempts to remove the Storage object and its metadata, but a failed file removal can leave a stored file even after its metadata is removed."
+    ],
+    [
+      "Delete your account",
+      "In Settings, use the account deletion action, currently labeled “Delete local account,” and confirm. Despite that label, the action attempts to delete registered cloud media, the app-state record, and your account profile before requesting deletion of your Firebase Authentication account. The deletion sequence also attempts to remove the encryption key on this device and the cloud encryption envelope. After authentication deletion succeeds, it removes the main local record and preference keys in this browser."
+    ],
+    [
+      "Partial deletion and recent sign-in",
+      "Firebase may require a recent sign-in to delete the authentication account. Earlier data-removal steps may already have completed when this or another step fails. Sign out, sign back in, and retry if necessary. The app does not verify that every cloud file was removed and cannot restore data already deleted."
+    ],
+    [
+      "Local copies and provider retention",
+      "Signing out does not erase all browser records or device encryption keys. Account deletion does not clear every legacy IndexedDB file, cached record, device key, reminder marker, or copy on other devices. Clear this site’s browser data separately on each device to remove local copies. Before clearing device keys, preserve your recovery key if you still need access to encrypted data. Provider logs, backups, orphaned uploads, and files downloaded or shared elsewhere may remain; the app does not promise a fixed removal deadline for them. RevenueCat purchase records are handled separately under its retention terms."
+    ],
+    [
+      "Before deleting",
+      "Export JSON or CSV records and separately save original media you want to keep. Exports omit uploaded media files and live download URLs. Printed stories and exports are readable files you must protect independently. Cancel any subscription through Manage or cancel before deleting your account; the account deletion action does not cancel billing. Account deletion is intended to be permanent and cannot be undone through the app. Contact Contact@Blackburn.Works if you need help with an incomplete deletion."
+    ]
+  ]
+};
   return <div className="page legal-page"><button className="back-btn" onClick={() => go("settings")}>← <span>Settings</span></button><Header eyebrow={content.eyebrow} title={content.title} /><p className="legal-intro">Plain-language information for the Keepsake preview. This page should be reviewed by qualified legal counsel before a commercial launch.</p><div className="legal-sections">{content.sections.map(([title, body]) => <section key={title}><h2>{title}</h2><p>{body}</p></section>)}</div><CreatorCredit /></div>;
 }
 
