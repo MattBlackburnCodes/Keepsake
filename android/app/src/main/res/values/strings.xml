@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Keepsake</string>
+    <string name="title_activity_main">Keepsake</string>
+    <string name="package_name">works.blackburn.keepsake</string>
+    <string name="custom_url_scheme">works.blackburn.keepsake</string>
+</resources>

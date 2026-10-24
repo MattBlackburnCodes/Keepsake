@@ -328,15 +328,58 @@ function Profile({ person, go, media, notes, addNote, updateNote, removeNote, up
 }
 
 function AddMemory({ person, people, selectPerson, go, media, uploadMedia, plan }: { person: Person; people: Person[]; selectPerson: (person: Person) => void; go: (s: Screen) => void; media: MediaItem[]; uploadMedia: (file: File, type: UploadType, onProgress?: (percent: number) => void) => Promise<string | null>; plan: Plan }) {
-  const actions = [["Photo", "A moment you can see", "▣", "green"], ["Voice recording", "Keep their voice close", "♬", "pink"], ["Note", "A story or little detail", "▤", "yellow"], ["Video", "A moment in motion", "▰", "purple"], ["Favorite", "Something they love", "★", "orange"], ["Special date", "A day worth remembering", "▦", "blue"]];
-  const [uploading, setUploading] = useState(false); const [progress, setProgress] = useState(0); const [message, setMessage] = useState(""); const [retry, setRetry] = useState<{ file: File; type: UploadType } | null>(null);
+  const actions = [["Photo", "Choose one or more photos from your library", "▣", "green"], ["Voice recording", "Keep their voice close", "♬", "pink"], ["Note", "A story or little detail", "▤", "yellow"], ["Video", "A moment in motion", "▰", "purple"], ["Favorite", "Something they love", "★", "orange"], ["Special date", "A day worth remembering", "▦", "blue"]];
+  const [uploading, setUploading] = useState(false); const [progress, setProgress] = useState(0); const [message, setMessage] = useState(""); const [retry, setRetry] = useState<{ files: File[]; type: UploadType } | null>(null);
   const [recording, setRecording] = useState(false); const recorderRef = useRef<MediaRecorder | null>(null); const chunksRef = useRef<Blob[]>([]);
   const limits = getPlanLimits(plan);
   const photos = media.filter((item) => item.personId === person.id && item.type === "photo").length; const videos = media.filter((item) => item.personId === person.id && item.type === "video").length; const voices = media.filter((item) => item.personId === person.id && item.type === "voice").length;
-  const runUpload = async (file: File, type: UploadType) => { setUploading(true); setProgress(0); setMessage(""); const error = await uploadMedia(file, type, setProgress); setUploading(false); if (error) { setRetry({ file, type }); setMessage(error); } else { setRetry(null); setProgress(100); setMessage(`${type === "photo" ? "Photo" : type === "video" ? "Video" : "Voice recording"} saved to ${person.name}’s Keepsake.`); } };
-  const choose = (type: "photo" | "video" | "voice") => { const input = document.createElement("input"); input.type = "file"; input.accept = type === "photo" ? "image/jpeg,image/png,image/webp,image/heic" : type === "video" ? "video/mp4,video/webm,video/quicktime" : "audio/mpeg,audio/mp4,audio/wav,audio/webm,audio/ogg,audio/x-m4a"; input.onchange = async () => { const file = input.files?.[0]; if (file) await runUpload(file, type); }; input.click(); };
+  const uploadLock = useRef(false);
+  const runUploads = async (files: File[], type: UploadType) => {
+    if (!files.length || uploadLock.current) return;
+    uploadLock.current = true;
+    setUploading(true); setProgress(0); setMessage(""); setRetry(null);
+    const countedMedia = [...media];
+    const failed: File[] = [];
+    let saved = 0;
+    let firstError = "";
+    try {
+      for (const [index, file] of files.entries()) {
+        setMessage(`Uploading ${type === "photo" ? "photo" : "file"} ${index + 1} of ${files.length}: ${file.name}`);
+        let error = mediaAllowanceError(plan, countedMedia, person.id, type, file.size);
+        if (!error) {
+          try {
+            error = await uploadMedia(file, type, (percent) => setProgress(Math.round((index * 100 + percent) / files.length)));
+          } catch {
+            error = "Check your connection and try again.";
+          }
+        }
+        if (error) { failed.push(file); firstError ||= error; }
+        else {
+          saved++;
+          countedMedia.push({ id: `batch-${index}`, personId: person.id, type, size: file.size, name: file.name, url: "" });
+        }
+        setProgress(Math.round(((index + 1) / files.length) * 100));
+      }
+      const label = type === "photo" ? (saved === 1 ? "photo" : "photos") : type === "video" ? (saved === 1 ? "video" : "videos") : (saved === 1 ? "voice recording" : "voice recordings");
+      setMessage(`${saved} ${label} saved to ${person.name}’s Keepsake.${failed.length ? ` ${failed.length} could not be saved. ${firstError}` : ""}`);
+      setRetry(failed.length ? { files: failed, type } : null);
+    } finally {
+      uploadLock.current = false;
+      setUploading(false);
+    }
+  };
+  const runUpload = (file: File, type: UploadType) => runUploads([file], type);
+  const choose = (type: UploadType) => {
+    if (uploadLock.current) return;
+    const input = document.createElement("input");
+    input.type = "file";
+    input.multiple = type === "photo";
+    input.accept = type === "photo" ? "image/jpeg,image/png,image/webp,image/heic" : type === "video" ? "video/mp4,video/webm,video/quicktime" : "audio/mpeg,audio/mp4,audio/wav,audio/webm,audio/ogg,audio/x-m4a";
+    input.onchange = async () => { await runUploads(Array.from(input.files ?? []), type); };
+    input.click();
+  };
   const toggleRecording = async () => { if (recording) { recorderRef.current?.stop(); return; } try { const stream = await navigator.mediaDevices.getUserMedia({ audio: true }); chunksRef.current = []; const recorder = new MediaRecorder(stream); recorderRef.current = recorder; recorder.ondataavailable = (event) => { if (event.data.size) chunksRef.current.push(event.data); }; recorder.onstop = async () => { stream.getTracks().forEach((track) => track.stop()); setRecording(false); const blob = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" }); const file = new File([blob], `Voice recording ${new Date().toLocaleDateString()}.webm`, { type: blob.type }); await runUpload(file, "voice"); }; recorder.start(); setRecording(true); setMessage("Recording… select Stop recording when you’re finished."); } catch { setMessage("Microphone access wasn’t available. You can upload an audio file instead."); } };
-  return <div className="page add-page"><button className="close-btn" onClick={() => go("home")}>×</button><div className="add-heading"><p>Save something special</p><h1>What do you want to remember?</h1><label className="memory-person-select"><span>We’ll add it to</span><span className="memory-person-control"><Avatar person={person} size="sm" /><select value={person.id} onChange={(event) => { const nextPerson = people.find((entry) => entry.id === Number(event.target.value)); if (nextPerson) selectPerson(nextPerson); }} aria-label="Choose whose Keepsake receives this memory">{people.map((entry) => <option key={entry.id} value={entry.id}>{entry.name} — {entry.relationship}</option>)}</select></span></label></div><div className="media-allowance"><span><strong>{photos} / {limits.photosPerPerson}</strong> photos</span><span><strong>{videos} / {limits.videosPerPerson}</strong> videos</span><span><strong>{voices} / {limits.voicePerPerson}</strong> voice</span><small>{plan === "pro" ? "Pro" : "Free"} account · {formatStorage(mediaUsage(media))} of {formatStorage(limits.storageBytes)} used. Videos can be up to 2 minutes; voice recordings up to 5 minutes. <button className="text-button" onClick={() => choose("voice")}>Upload an audio file</button></small></div>{message && <p className={`upload-message ${message.includes("saved") ? "success" : ""}`} role="status">{message}{retry && <button className="text-button" onClick={() => runUpload(retry.file, retry.type)}>Try again</button>}</p>}{uploading && <div className="upload-progress" role="status"><span><i style={{ width: `${progress}%` }} /></span><strong>{progress}% uploaded</strong></div>}<div className="action-grid">{actions.map(([title, desc, icon, color]) => { const type = title === "Photo" ? "photo" : title === "Video" ? "video" : title === "Voice recording" ? "voice" : null; const disabled = uploading || Boolean(type && mediaAllowanceError(plan, media, person.id, type)); return <button key={title} disabled={disabled && !(title === "Voice recording" && recording)} className={title === "Voice recording" && recording ? "recording-action" : ""} onClick={() => title === "Photo" ? choose("photo") : title === "Video" ? choose("video") : title === "Voice recording" ? toggleRecording() : go(title === "Note" ? "notes" : "profile")}><span className={color}>{icon}</span><div><strong>{title === "Voice recording" && recording ? "Stop recording" : title}</strong><small>{disabled && type ? "Plan limit reached" : title === "Voice recording" && recording ? "Recording now…" : desc}</small></div><b>→</b></button>; })}</div></div>;
+  return <div className="page add-page"><button className="close-btn" onClick={() => go("home")}>×</button><div className="add-heading"><p>Save something special</p><h1>What do you want to remember?</h1><label className="memory-person-select"><span>We’ll add it to</span><span className="memory-person-control"><Avatar person={person} size="sm" /><select disabled={uploading || recording} value={person.id} onChange={(event) => { const nextPerson = people.find((entry) => entry.id === Number(event.target.value)); if (nextPerson) selectPerson(nextPerson); }} aria-label="Choose whose Keepsake receives this memory">{people.map((entry) => <option key={entry.id} value={entry.id}>{entry.name} — {entry.relationship}</option>)}</select></span></label></div><div className="media-allowance"><span><strong>{photos} / {limits.photosPerPerson}</strong> photos</span><span><strong>{videos} / {limits.videosPerPerson}</strong> videos</span><span><strong>{voices} / {limits.voicePerPerson}</strong> voice</span><small>{plan === "pro" ? "Pro" : "Free"} account · {formatStorage(mediaUsage(media))} of {formatStorage(limits.storageBytes)} used. Videos can be up to 2 minutes; voice recordings up to 5 minutes. <button className="text-button" disabled={uploading || recording} onClick={() => choose("voice")}>Upload an audio file</button></small></div>{message && <p className={`upload-message ${message.includes("saved") ? "success" : ""}`} role="status">{message}{retry && <button className="text-button" disabled={uploading} onClick={() => runUploads(retry.files, retry.type)}>Try again</button>}</p>}{uploading && <div className="upload-progress" role="status"><span><i style={{ width: `${progress}%` }} /></span><strong>{progress}% uploaded</strong></div>}<div className="action-grid">{actions.map(([title, desc, icon, color]) => { const type = title === "Photo" ? "photo" : title === "Video" ? "video" : title === "Voice recording" ? "voice" : null; const disabled = uploading || recording || Boolean(type && mediaAllowanceError(plan, media, person.id, type)); return <button key={title} disabled={disabled && !(title === "Voice recording" && recording)} className={title === "Voice recording" && recording ? "recording-action" : ""} onClick={() => title === "Photo" ? choose("photo") : title === "Video" ? choose("video") : title === "Voice recording" ? toggleRecording() : go(title === "Note" ? "notes" : "profile")}><span className={color}>{icon}</span><div><strong>{title === "Voice recording" && recording ? "Stop recording" : title}</strong><small>{uploading ? "Upload in progress…" : recording && title !== "Voice recording" ? "Recording in progress…" : disabled && type && !recording ? "Plan limit reached" : title === "Voice recording" && recording ? "Recording now…" : desc}</small></div><b>→</b></button>; })}</div></div>;
 }
 
 function Notes({ person, go, notes, addNote, removeNote }: { person: Person; go: (s: Screen) => void; notes: KeepsakeNote[]; addNote: (title: string, body: string) => void; removeNote: (id: string) => void }) {
