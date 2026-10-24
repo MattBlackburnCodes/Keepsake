@@ -15,7 +15,7 @@ const person = { id: 123, name: 'Person', image: '', cover: '', birthday: '', re
 const profile = { id: 'profile-123', personId: 123, type: 'profile', url: 'blob:decrypted-profile', size: 10 };
 const cover = { id: 'cover-123', personId: 123, type: 'cover', url: 'blob:decrypted-cover', size: 10 };
 
-function harness(loadMedia, loadState = async () => ({ people: [person], notes: [], inbox: [], reminders: { enabled: false }, darkMode: false }), uploadMedia = async () => "") {
+function harness(loadMedia, loadState = async () => ({ people: [person], notes: [], inbox: [], reminders: { enabled: false }, darkMode: false }), uploadMedia = async () => "", deleteMedia = async () => {}) {
   const states = [], deps = [], cleanups = [], listeners = {}, timers = new Map(); let timerId = 0;
   let cursor = 0, effects = [], authCallback, loads = 0, saves = 0;
   const jsx = (type, props) => ({ type, props });
@@ -31,7 +31,7 @@ function harness(loadMedia, loadState = async () => ({ people: [person], notes: 
     './firebase': { auth: { currentUser: firebaseUser }, initializeAnalytics: async () => null },
     './e2ee': { E2EE_ENABLED: false },
     './subscriptions': {},
-    './firebase-data': { uploadCloudMedia: uploadMedia, ensureUserProfile: async () => {}, loadCloudState: loadState, loadCloudMedia: async (_uid, onError) => { loads++; return loadMedia(onError); }, saveCloudState: async () => { saves++; } },
+    './firebase-data': { deleteCloudMedia: deleteMedia, uploadCloudMedia: uploadMedia, ensureUserProfile: async () => {}, loadCloudState: loadState, loadCloudMedia: async (_uid, onError) => { loads++; return loadMedia(onError); }, saveCloudState: async () => { saves++; } },
   }, { localStorage: { getItem: () => null, setItem() {} }, document: { visibilityState: 'visible', addEventListener() {}, removeEventListener() {}, documentElement: { dataset: {} } }, window: { location: { hash: '#/people/123', search: '' }, addEventListener: (name, fn) => { listeners[name] = fn; }, removeEventListener() {}, setTimeout: (fn, ms) => { const id = ++timerId; timers.set(id, { fn, ms }); return id; }, clearTimeout: id => timers.delete(id) } });
   return {
     render() { cursor = 0; return app.default(); },
@@ -41,6 +41,8 @@ function harness(loadMedia, loadState = async () => ({ people: [person], notes: 
     timeout(ms) { for (const [id, timer] of timers) if (timer.ms === ms) { timers.delete(id); timer.fn(); } },
     people: () => states[6], media: () => states[7],
     profileProps() { const find = value => { if (!value || typeof value !== "object") return; if (value.props?.updateProfilePhoto) return value.props; for (const child of Object.values(value)) { if (typeof child === "function") continue; const match = find(child); if (match) return match; } }; return find(this.render()); },
+    storageProps() { states[0] = "storage"; const find = value => { if (!value || typeof value !== "object") return; if (value.props?.deleteFile) return value.props; for (const child of Object.values(value)) { if (typeof child === "function") continue; const match = find(child); if (match) return match; } }; return find(this.render()); },
+    inbox: () => states[5],
     uploaded(item) { states[7] = [...states[7].filter(old => old.id !== item.id), item]; },
     retry() { const node = this.render(); const find = value => { if (!value || typeof value !== 'object') return; if (value.type === 'button' && value.props.children === 'Retry media') return value; for (const child of Object.values(value)) { if (typeof child === 'function') continue; const match = find(child); if (match) return match; } }; const button = find(node); assert.ok(button); button.props.onClick(); },
   };
@@ -171,4 +173,35 @@ test('recovery confirmation preserves Base64url case and supports legacy hexadec
   assert.equal(api.recoveryKeyConfirmationMatches(legacy.match(/.{1,4}/g).join('-'), 'BCDE'), true);
   assert.equal(api.recoveryKeyConfirmationMatches(legacy, 'bcde'), true);
   assert.equal(api.recoveryKeyConfirmationMatches('', ''), false);
+});
+
+test('storage cleanup clears profile and cover references only after confirmed cloud deletion', async () => {
+  const deleted = [];
+  const h = harness(async () => [profile, cover], undefined, undefined, async (uid, id) => deleted.push({ uid, id }));
+  await start(h);
+  assert.equal(await h.storageProps().deleteFile(profile.id), null);
+  assert.equal(h.people()[0].image, '');
+  assert.equal(h.people()[0].cover, cover.url);
+  assert.equal(h.media().some(item => item.id === profile.id), false);
+  assert.equal(await h.storageProps().deleteFile(cover.id), null);
+  assert.equal(h.people()[0].cover, '');
+  assert.equal(deleted.length, 2);
+});
+
+test('storage cleanup failure preserves media and portrait references', async () => {
+  const h = harness(async () => [profile, cover], undefined, undefined, async () => { throw Error('offline'); });
+  await start(h);
+  assert.match(await h.storageProps().deleteFile(profile.id), /could not be deleted/);
+  assert.equal(h.people()[0].image, profile.url);
+  assert.equal(h.media().length, 2);
+});
+
+test('storage cleanup removes a Quick Note attachment while keeping its text', async () => {
+  const voice = { id: 'voice', personId: 0, type: 'voice', size: 42, url: 'blob:voice' };
+  const state = { people: [person], notes: [], inbox: [{ id: 'inbox', title: 'A memory', body: 'Keep this text', mediaId: 'voice' }], reminders: { enabled: false }, darkMode: false };
+  const h = harness(async () => [voice], async () => state);
+  await start(h);
+  assert.equal(await h.storageProps().deleteFile('voice'), null);
+  assert.equal(h.inbox()[0].body, 'Keep this text');
+  assert.equal(h.inbox()[0].mediaId, undefined);
 });

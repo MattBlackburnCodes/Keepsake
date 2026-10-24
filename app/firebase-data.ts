@@ -173,8 +173,8 @@ export async function deleteCloudMedia(uid: string, id: string) {
   if (snapshot.exists()) {
     const storagePath = snapshot.data().storagePath as string | undefined;
     const legacyStoragePath = snapshot.data().legacyStoragePath as string | undefined;
-    if (storagePath) await deleteObject(ref(storage, storagePath)).catch(() => undefined);
-    if (legacyStoragePath && legacyStoragePath !== storagePath) await deleteObject(ref(storage, legacyStoragePath)).catch(() => undefined);
+    if (storagePath) await deleteObject(ref(storage, storagePath)).catch((error: unknown) => { if ((error as { code?: string })?.code !== "storage/object-not-found") throw error; });
+    if (legacyStoragePath && legacyStoragePath !== storagePath) await deleteObject(ref(storage, legacyStoragePath)).catch((error: unknown) => { if ((error as { code?: string })?.code !== "storage/object-not-found") throw error; });
   }
   await deleteDoc(mediaRef);
   await removeCachedMedia(uid, id).catch(() => undefined);
