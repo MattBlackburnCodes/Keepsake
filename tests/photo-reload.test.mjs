@@ -25,6 +25,7 @@ function harness(loadMedia, loadState = async () => ({ people: [person], notes: 
     useRef: initial => { const i = cursor++; if (!(i in states)) states[i] = { current: initial }; return states[i]; },
     useEffect: (fn, next) => { const i = cursor++; if (!deps[i] || next.some((v, j) => v !== deps[i][j])) { deps[i] = next; effects.push(() => { cleanups[i]?.(); cleanups[i] = fn(); }); } },
   };
+  const location = { hash: "#/people/123", search: "" };
   const app = mockedModule('../app/page.tsx', {
     react, 'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: 'fragment' },
     'firebase/auth': { onAuthStateChanged: (_auth, cb) => { authCallback = cb; return () => {}; }, getIdTokenResult: async () => ({ claims: {} }) },
@@ -32,12 +33,17 @@ function harness(loadMedia, loadState = async () => ({ people: [person], notes: 
     './e2ee': { E2EE_ENABLED: false },
     './subscriptions': {},
     './firebase-data': { deleteCloudMedia: deleteMedia, uploadCloudMedia: uploadMedia, ensureUserProfile: async () => {}, loadCloudState: loadState, loadCloudMedia: async (_uid, onError) => { loads++; return loadMedia(onError); }, saveCloudState: async () => { saves++; } },
-  }, { localStorage: { getItem: () => null, setItem() {} }, document: { visibilityState: 'visible', addEventListener() {}, removeEventListener() {}, documentElement: { dataset: {} } }, window: { location: { hash: '#/people/123', search: '' }, addEventListener: (name, fn) => { listeners[name] = fn; }, removeEventListener() {}, setTimeout: (fn, ms) => { const id = ++timerId; timers.set(id, { fn, ms }); return id; }, clearTimeout: id => timers.delete(id) } });
+  }, { crypto: { randomUUID: () => "new-note" }, localStorage: { getItem: () => null, setItem() {} }, document: { visibilityState: 'visible', addEventListener() {}, removeEventListener() {}, documentElement: { dataset: {} } }, window: { location, scrollTo() {}, addEventListener: (name, fn) => { listeners[name] = fn; }, removeEventListener() {}, setTimeout: (fn, ms) => { const id = ++timerId; timers.set(id, { fn, ms }); return id; }, clearTimeout: id => timers.delete(id) } });
   return {
     render() { cursor = 0; return app.default(); },
     flush() { const pending = effects; effects = []; pending.forEach(fn => fn()); },
     async login() { authCallback(firebaseUser); await tick(); },
     counts: () => ({ loads, saves }),
+    screen: () => states[0],
+    notes: () => states[4],
+    location,
+    hashChange(hash) { if (hash) location.hash = hash; if (!location.hash.startsWith("#")) location.hash = "#" + location.hash; listeners.hashchange(); },
+    component(predicate) { const find = value => { if (!value || typeof value !== "object") return; if (predicate(value)) return value; for (const child of Object.values(value)) { if (typeof child === "function") continue; const match = find(child); if (match) return match; } }; return find(this.render()); },
     timeout(ms) { for (const [id, timer] of timers) if (timer.ms === ms) { timers.delete(id); timer.fn(); } },
     people: () => states[6], media: () => states[7],
     profileProps() { const find = value => { if (!value || typeof value !== "object") return; if (value.props?.updateProfilePhoto) return value.props; for (const child of Object.values(value)) { if (typeof child === "function") continue; const match = find(child); if (match) return match; } }; return find(this.render()); },
@@ -204,4 +210,39 @@ test('storage cleanup removes a Quick Note attachment while keeping its text', a
   assert.equal(await h.storageProps().deleteFile('voice'), null);
   assert.equal(h.inbox()[0].body, 'Keep this text');
   assert.equal(h.inbox()[0].mediaId, undefined);
+});
+test('See all to Add Note stays on the selected person after the browser hash event', async () => {
+  const h = harness(async () => []);
+  await start(h);
+  h.profileProps().go('add');
+  h.hashChange();
+  const add = h.component(node => typeof node.props?.uploadMedia === 'function');
+  assert.ok(add);
+  add.props.go('notes');
+  h.hashChange();
+  assert.equal(h.screen(), 'notes');
+  assert.ok(h.location.hash.endsWith('/people/123/notes'));
+  const notes = h.component(node => node.type?.name === 'Notes');
+  assert.ok(notes, 'the note editor should open');
+  assert.equal(notes.props.person.id, person.id);
+  notes.props.addNote('Mobile memory', 'Saved from Add Note');
+  assert.equal(h.notes()[0].personId, person.id);
+  assert.equal(h.notes()[0].title, 'Mobile memory');
+  notes.props.go('profile');
+  h.hashChange();
+  assert.equal(h.screen(), 'profile');
+});
+
+test('person-specific notes links restore the person and survive account updates', async () => {
+  const h = harness(async () => []);
+  h.location.hash = '#/people/123/notes';
+  await start(h);
+  assert.equal(h.screen(), 'notes');
+  assert.equal(h.component(node => node.type?.name === 'Notes').props.person.id, person.id);
+  await h.login(); h.render(); h.flush(); await tick();
+  assert.equal(h.screen(), 'notes');
+  h.hashChange('#/people/123');
+  assert.equal(h.screen(), 'profile');
+  h.hashChange('#/people/123/notes');
+  assert.equal(h.screen(), 'notes');
 });
