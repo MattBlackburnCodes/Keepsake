@@ -72,7 +72,7 @@ function harness() {
   let cursor = 0; const states = [], downloads = [];
   const react = { useState(initial) { const i = cursor++; if (!(i in states)) states[i] = initial; return [states[i], value => { states[i] = typeof value === "function" ? value(states[i]) : value; }]; } };
   const jsx = (type, props) => ({ type, props });
-  const component = load("../app/custom-export.tsx", { react, "./export-data": api, "react/jsx-runtime": { jsx, jsxs: jsx } }, {
+  const component = load("../app/custom-export.tsx", { "./print-preview": { openPrintPreview: () => false }, react, "./export-data": api, "react/jsx-runtime": { jsx, jsxs: jsx } }, {
     Blob, URL: { createObjectURL: blob => { downloads.push(blob); return "blob:download"; }, revokeObjectURL() {} },
     document: { createElement: () => ({ click() {}, remove() {} }), body: { appendChild() {} } }, window: { setTimeout() {}, open: () => null },
   });

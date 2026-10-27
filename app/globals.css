@@ -173,3 +173,8 @@ main { margin-left:256px; min-height:100vh; }
 .custom-export-download select{width:100%;border:1px solid var(--line);border-radius:10px;padding:12px;background:var(--paper);color:var(--ink);font-size:14px}
 .custom-export button:disabled{opacity:.5;cursor:not-allowed}
 @media(max-width:600px){.custom-export{padding:18px}.custom-export-groups,.custom-export-people{grid-template-columns:1fr}.custom-export-preview{padding:14px}.custom-export-download>.primary-btn{width:100%;white-space:normal}}
+
+.export-page.page{padding-top:28px}
+.export-full-backup{margin-top:24px;border:1px solid var(--line);border-radius:16px;background:var(--paper);overflow:hidden}
+.export-full-backup>summary{padding:18px 22px;min-height:48px;font-size:15px;font-weight:700;color:var(--ink);cursor:pointer}
+.export-full-backup .export-card{border:0;border-top:1px solid var(--line);border-radius:0;margin:0}

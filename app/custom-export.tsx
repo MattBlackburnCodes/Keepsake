@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { openPrintPreview } from "./print-preview";
 import { EXPORT_GROUPS, buildCustomExport, customExportCsv, customExportHtml, customExportJson, exportChoices, exportGroupLabel, type ExportSource } from "./export-data";
 
 export default function CustomExport(source: ExportSource) {
@@ -29,12 +30,7 @@ export default function CustomExport(source: ExportSource) {
     setError("");
     try {
       if (format === "pdf") {
-        const popup = window.open("", "_blank");
-        if (!popup) { setError("Allow pop-ups for Keepsake, then try again to open the print preview."); return; }
-        popup.opener = null;
-        popup.document.write(customExportHtml(preview));
-        popup.document.close();
-        popup.focus();
+        if (!openPrintPreview(customExportHtml(preview))) setError("Allow pop-ups for Keepsake, then try again to open the print preview.");
         return;
       }
       const contents = format === "csv" ? customExportCsv(preview) : customExportJson(preview);

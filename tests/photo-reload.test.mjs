@@ -25,6 +25,7 @@ function harness(loadMedia, loadState = async () => ({ people: [person], notes: 
     useRef: initial => { const i = cursor++; if (!(i in states)) states[i] = { current: initial }; return states[i]; },
     useEffect: (fn, next) => { const i = cursor++; if (!deps[i] || next.some((v, j) => v !== deps[i][j])) { deps[i] = next; effects.push(() => { cleanups[i]?.(); cleanups[i] = fn(); }); } },
   };
+  const printDocuments = [];
   const location = { hash: "#/people/123", search: "" };
   const app = mockedModule('../app/page.tsx', {
     react, 'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: 'fragment' },
@@ -32,6 +33,7 @@ function harness(loadMedia, loadState = async () => ({ people: [person], notes: 
     './firebase': { auth: { currentUser: firebaseUser }, initializeAnalytics: async () => null },
     './e2ee': { E2EE_ENABLED: false },
     './subscriptions': {},
+    './print-preview': { openPrintPreview: (html, autoPrint) => { printDocuments.push({ html, autoPrint }); return true; } },
     './firebase-data': { deleteCloudMedia: deleteMedia, uploadCloudMedia: uploadMedia, ensureUserProfile: async () => {}, loadCloudState: loadState, loadCloudMedia: async (_uid, onError) => { loads++; return loadMedia(onError); }, saveCloudState: async () => { saves++; } },
   }, { crypto: { randomUUID: () => "new-note" }, localStorage: { getItem: () => null, setItem() {} }, document: { visibilityState: 'visible', addEventListener() {}, removeEventListener() {}, documentElement: { dataset: {} } }, window: { location, scrollTo() {}, addEventListener: (name, fn) => { listeners[name] = fn; }, removeEventListener() {}, setTimeout: (fn, ms) => { const id = ++timerId; timers.set(id, { fn, ms }); return id; }, clearTimeout: id => timers.delete(id) } });
   return {
@@ -41,7 +43,7 @@ function harness(loadMedia, loadState = async () => ({ people: [person], notes: 
     counts: () => ({ loads, saves }),
     screen: () => states[0],
     notes: () => states[4],
-    location,
+    location, printDocuments,
     hashChange(hash) { if (hash) location.hash = hash; if (!location.hash.startsWith("#")) location.hash = "#" + location.hash; listeners.hashchange(); },
     component(predicate) { const find = value => { if (!value || typeof value !== "object") return; if (predicate(value)) return value; for (const child of Object.values(value)) { if (typeof child === "function") continue; const match = find(child); if (match) return match; } }; return find(this.render()); },
     timeout(ms) { for (const [id, timer] of timers) if (timer.ms === ms) { timers.delete(id); timer.fn(); } },
@@ -245,4 +247,33 @@ test('person-specific notes links restore the person and survive account updates
   assert.equal(h.screen(), 'profile');
   h.hashChange('#/people/123/notes');
   assert.equal(h.screen(), 'notes');
+});
+test('Settings links to a dedicated export page instead of displaying export forms', async () => {
+  const h = harness(async () => []);
+  await start(h);
+  h.profileProps().go('settings'); h.hashChange();
+  assert.equal(h.screen(), 'settings');
+  assert.equal(h.component(node => node.type?.name === 'ExportBackup'), undefined);
+  const links = h.component(node => node.type?.name === 'SettingsLinks');
+  assert.ok(links);
+  links.props.go('export'); h.hashChange();
+  assert.equal(h.screen(), 'export');
+  assert.ok(h.location.hash.endsWith('/export'));
+  const exports = h.component(node => node.type?.name === 'ExportBackup');
+  assert.ok(exports);
+  exports.props.printStories();
+  assert.equal(h.printDocuments.length, 1);
+  assert.equal(h.printDocuments[0].autoPrint, true);
+  assert.ok(h.printDocuments[0].html.includes('<body><h1>Keepsake stories'));
+  assert.ok(h.printDocuments[0].html.includes('</body></html>'));
+  exports.props.go('settings'); h.hashChange();
+  assert.equal(h.screen(), 'settings');
+});
+
+test('the export page restores directly from its URL after account loading', async () => {
+  const h = harness(async () => []);
+  h.location.hash = '#/export';
+  await start(h);
+  assert.equal(h.screen(), 'export');
+  assert.ok(h.component(node => node.type?.name === 'ExportBackup'));
 });
