@@ -99,11 +99,11 @@ test("gift guide excludes notes and supports removing a single favorite before d
   checkbox(render(), "Alex").props.onChange({ target: { checked: true } });
   assert.equal(checkbox(render(), "Gift idea").props.checked, false);
 });
-test("blocked PDF popups give an actionable error and retain the selection", () => {
+test("unavailable print preview gives an actionable error and retains the selection", () => {
   const h = harness(); const render = () => h.render();
   checkbox(render(), "Alex").props.onChange({ target: { checked: true } });
   find(render(), node => node.type === "button" && node.props.children === "Gift guide").props.onClick();
   find(render(), node => node.type === "button" && node.props.children === "Open print / PDF preview").props.onClick();
-  assert.match(find(render(), node => node.props?.role === "alert").props.children, /Allow pop-ups/);
+  assert.match(find(render(), node => node.props?.role === "alert").props.children, /Safari or Chrome/);
   assert.equal(checkbox(render(), "Gift idea").props.checked, true);
 });

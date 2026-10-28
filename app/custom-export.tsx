@@ -30,7 +30,7 @@ export default function CustomExport(source: ExportSource) {
     setError("");
     try {
       if (format === "pdf") {
-        if (!openPrintPreview(customExportHtml(preview))) setError("Allow pop-ups for Keepsake, then try again to open the print preview.");
+        if (!openPrintPreview(customExportHtml(preview))) setError("The print preview could not open. Try reopening Keepsake in Safari or Chrome.");
         return;
       }
       const contents = format === "csv" ? customExportCsv(preview) : customExportJson(preview);
@@ -67,7 +67,7 @@ export default function CustomExport(source: ExportSource) {
         {!people.length ? <p>Select people to preview their export.</p> : preview.map((person, index) => <article key={index}><h4>{person.name}</h4>{!person.entries.length && <p>No details selected for this person.</p>}{person.entries.map((entry) => <div className="custom-export-preview-entry" key={entry.key}><small>{exportGroupLabel(entry.group)}</small><strong>{entry.label}</strong><p>{entry.value}</p>{entry.date && <small>{entry.date}</small>}{entry.imageUrl && <img src={entry.imageUrl} alt={entry.label} loading="lazy" />}</div>)}</article>)}
       </section>
       <div className="custom-export-download"><label><span>Export format</span><select value={format} onChange={(event) => { setFormat(event.target.value); setError(""); }}><option value="pdf">Print / Save PDF — a shareable reference</option><option value="csv">CSV — open in a spreadsheet</option><option value="json">JSON — selected structured data</option></select></label>
-        <p className="custom-export-help">{format === "pdf" ? "Open the print preview, then choose Print / Save PDF. Your browser provides the Save as PDF option." : "Exports selected text and file details. This custom export is not a complete app backup."}{hasMedia && " Original video and audio files are not embedded."}{hasImages && (format === "pdf" ? " Selected images are included; wait for them to load before printing." : " Image descriptions are included; photos are available in the PDF option. Media download links are excluded.")}</p>
+        <p className="custom-export-help">{format === "pdf" ? "The preview opens inside Keepsake. Tap Print / Save PDF there, then choose Save as PDF in the print options." : "Exports selected text and file details. This custom export is not a complete app backup."}{hasMedia && " Original video and audio files are not embedded."}{hasImages && (format === "pdf" ? " Selected images are included; wait for them to load before printing." : " Image descriptions are included; photos are available in the PDF option. Media download links are excluded.")}</p>
         <p className="custom-export-help">Review the preview before sharing. Account information and Quick Notes are excluded.</p>
         {error && <p role="alert" className="form-error">{error}</p>}
         <button type="button" className="primary-btn" disabled={!people.length || !detailCount} onClick={download}>{format === "pdf" ? "Open print / PDF preview" : `Download selected ${format.toUpperCase()}`}</button>
