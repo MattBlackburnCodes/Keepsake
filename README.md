@@ -19,6 +19,12 @@ npm run dev
 
 Open `http://localhost:3000`.
 
+## Memory features
+
+- Open a person's page for **Ask them this** story prompts. Answers save as ordinary notes in their story.
+- **On this day** on Home resurfaces notes, dated media, and milestones from the same calendar date in past years. Legacy notes saved only as “Today” are excluded because their original date is unknown.
+- Under **Settings → Export to a file**, create a **keepsake book** for one person, with a title, dedication, biography, chronological stories and milestones, and optional photos. Preview it in the app, then print or save as PDF. Audio and video files are excluded.
+
 ## Production verification
 
 ```bash

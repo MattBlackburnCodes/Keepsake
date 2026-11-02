@@ -178,3 +178,17 @@ main { margin-left:256px; min-height:100vh; }
 .export-full-backup{margin-top:24px;border:1px solid var(--line);border-radius:16px;background:var(--paper);overflow:hidden}
 .export-full-backup>summary{padding:18px 22px;min-height:48px;font-size:15px;font-weight:700;color:var(--ink);cursor:pointer}
 .export-full-backup .export-card{border:0;border-top:1px solid var(--line);border-radius:0;margin:0}
+/* Memory discovery and printed collections */
+.discovery-card { margin: 28px 0; padding: clamp(20px, 4vw, 36px); border: 1px solid var(--line); border-radius: 22px; background: var(--paper); color: var(--ink); }
+.discovery-card h2 { font-family: Georgia, serif; margin: 8px 0 14px; }
+.discovery-card blockquote { font-family: Georgia, serif; font-size: clamp(22px, 4vw, 30px); line-height: 1.45; margin: 20px 0; }
+.discovery-card p { line-height: 1.65; overflow-wrap: anywhere; }
+.discovery-actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 20px; }
+.anniversary-memories { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 24px; margin-top: 24px; }
+.anniversary-memories article { min-width: 0; padding: 18px; border: 1px solid var(--line); border-radius: 16px; }
+.anniversary-memories img { width: 100%; max-height: 250px; object-fit: contain; border-radius: 12px; margin-bottom: 16px; }
+.anniversary-memories p { white-space: pre-wrap; }
+.discovery-card .book-photo-choice { display: flex; align-items: center; gap: 10px; }
+.discovery-card .book-photo-choice input { width: auto; }
+
+.discovery-card select { width: 100%; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); color: var(--ink); font: inherit; }
